@@ -1,0 +1,10 @@
+<component name="libraryTable">
+  <library name="astm-asyncastm">
+    <CLASSES>
+      <root url="file://$PROJECT_DIR$/../../caduceus-astm-orginal" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+    <jarDirectory url="file://$PROJECT_DIR$/../../caduceus-astm-orginal" recursive="false" />
+  </library>
+</component>
