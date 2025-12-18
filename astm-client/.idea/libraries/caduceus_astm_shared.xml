@@ -1,11 +1,11 @@
 <component name="libraryTable">
   <library name="caduceus-astm-shared">
     <CLASSES>
-      <root url="file://$PROJECT_DIR$/../caduceus-astm-shared" />
+      <root url="file://$PROJECT_DIR$/../astm-shared" />
     </CLASSES>
     <JAVADOC />
     <SOURCES>
-      <root url="file://$PROJECT_DIR$/../caduceus-astm-shared" />
+      <root url="file://$PROJECT_DIR$/../astm-shared" />
     </SOURCES>
   </library>
 </component>
