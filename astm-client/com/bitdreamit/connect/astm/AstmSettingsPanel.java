@@ -586,7 +586,7 @@ public class AstmSettingsPanel extends AbstractSettingsPanel {
         this.marginSettingsPanel1.setBorder(BorderFactory.createEmptyBorder(24, 0, 0, 0));
         this.marginSettingsPanel1.setToolTipText("");
         this.marginSettingsPanel1.setLayout(new FlowLayout(0, 12, 0));
-        this.logo.setIcon(new ImageIcon(this.getClass().getResource("/com/bitdreamit/connect/astm/images/meditecs.png")));
+        this.logo.setIcon(new ImageIcon(this.getClass().getResource("/com/bitdreamit/connect/astm/images/bdit.png")));
         this.logo.setToolTipText("<html>Meditecs - <i>Smarter integrations. Better patient care.</i>");
         this.logo.setCursor(new Cursor(12));
         this.logo.addMouseListener(new MouseAdapter() {
