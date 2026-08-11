@@ -87,9 +87,14 @@ public abstract class AbstractAstmConnection implements Closeable {
         try {
             if (timeoutSeconds == 0) { this.readySemaphore.acquire(); }
             else if (!this.readySemaphore.tryAcquire(timeoutSeconds, TimeUnit.SECONDS)) {
+                // FIX #8: Mark semaphore as held so next call does not issue a redundant release.
+                this.semaphoreHeld = true;
                 throw new TimeoutException("Timeout exceeded in semaphore");
             }
-        } catch (InterruptedException e) { this.semaphoreHeld = true; throw new InterruptedException(e.toString()); }
+        } catch (InterruptedException e) {
+            this.semaphoreHeld = true;
+            throw new InterruptedException(e.toString());
+        }
         if (this.lastByte == -1) {
             String msg = "End of stream reached while waiting for byte in ASTM connection.";
             logger.debug(msg); throw new EOFException(msg);

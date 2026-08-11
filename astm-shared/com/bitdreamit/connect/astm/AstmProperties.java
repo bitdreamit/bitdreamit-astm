@@ -63,7 +63,6 @@ public abstract class AstmProperties extends ConnectorProperties {
     public AstmProperties(AstmProperties props) {
         super(props);
         if (props != null) {
-            // Old fields
             this.serverMode = props.serverMode;
             this.allInterfaces = props.allInterfaces;
             this.addressBind = props.addressBind;
@@ -74,8 +73,6 @@ public abstract class AstmProperties extends ConnectorProperties {
             this.protocol = props.protocol;
             this.sourceConnectorProperties = props.sourceConnectorProperties;
             this.destinationConnectorProperties = props.destinationConnectorProperties;
-
-            // New fields
             this.transportMode = props.transportMode;
             this.host = props.host;
             this.port = props.port;
@@ -195,6 +192,13 @@ public abstract class AstmProperties extends ConnectorProperties {
         purgedProperties.put("remoteAddress", this.remoteAddress);
         purgedProperties.put("remotePort", PurgeUtil.getNumericValue(this.remotePort));
         purgedProperties.put("transportMode", this.transportMode.name());
+        // FIX: Include new fields for accurate pruning statistics
+        purgedProperties.put("host", this.host);
+        purgedProperties.put("port", this.port);
+        purgedProperties.put("serialPort", this.serialPort);
+        purgedProperties.put("baudRate", this.baudRate);
+        purgedProperties.put("charsetName", this.charsetName);
+        purgedProperties.put("astmProtocol", this.astmProtocol);
         return purgedProperties;
     }
 
@@ -217,37 +221,37 @@ public abstract class AstmProperties extends ConnectorProperties {
 
         AstmProperties other = (AstmProperties) obj;
         return this.serverMode == other.serverMode
-                && this.allInterfaces == other.allInterfaces
-                && Objects.equals(this.addressBind, other.addressBind)
-                && Objects.equals(this.localPort, other.localPort)
-                && Objects.equals(this.remoteAddress, other.remoteAddress)
-                && Objects.equals(this.remotePort, other.remotePort)
-                && Objects.equals(this.astmProtocol, other.astmProtocol)
-                && this.transportMode == other.transportMode
-                && Objects.equals(this.host, other.host)
-                && this.port == other.port
-                && this.connectionTimeout == other.connectionTimeout
-                && Objects.equals(this.serialPort, other.serialPort)
-                && this.baudRate == other.baudRate
-                && this.dataBits == other.dataBits
-                && this.stopBits == other.stopBits
-                && this.parity == other.parity
-                && this.flowControl == other.flowControl
-                && Objects.equals(this.charsetName, other.charsetName)
-                && this.readTimeout == other.readTimeout
-                && this.writeTimeout == other.writeTimeout
-                && this.useEnqAck == other.useEnqAck
-                && this.useChecksum == other.useChecksum
-                && this.maxRetries == other.maxRetries
-                && this.maxFrameSize == other.maxFrameSize
-                && this.interFrameDelay == other.interFrameDelay;
+            && this.allInterfaces == other.allInterfaces
+            && Objects.equals(this.addressBind, other.addressBind)
+            && Objects.equals(this.localPort, other.localPort)
+            && Objects.equals(this.remoteAddress, other.remoteAddress)
+            && Objects.equals(this.remotePort, other.remotePort)
+            && Objects.equals(this.astmProtocol, other.astmProtocol)
+            && this.transportMode == other.transportMode
+            && Objects.equals(this.host, other.host)
+            && this.port == other.port
+            && this.connectionTimeout == other.connectionTimeout
+            && Objects.equals(this.serialPort, other.serialPort)
+            && this.baudRate == other.baudRate
+            && this.dataBits == other.dataBits
+            && this.stopBits == other.stopBits
+            && this.parity == other.parity
+            && this.flowControl == other.flowControl
+            && Objects.equals(this.charsetName, other.charsetName)
+            && this.readTimeout == other.readTimeout
+            && this.writeTimeout == other.writeTimeout
+            && this.useEnqAck == other.useEnqAck
+            && this.useChecksum == other.useChecksum
+            && this.maxRetries == other.maxRetries
+            && this.maxFrameSize == other.maxFrameSize
+            && this.interFrameDelay == other.interFrameDelay;
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(serverMode, allInterfaces, addressBind, localPort, remoteAddress, remotePort,
-                astmProtocol, transportMode, host, port, connectionTimeout, serialPort, baudRate,
-                dataBits, stopBits, parity, flowControl, charsetName, readTimeout, writeTimeout,
-                useEnqAck, useChecksum, maxRetries, maxFrameSize, interFrameDelay);
+            astmProtocol, transportMode, host, port, connectionTimeout, serialPort, baudRate,
+            dataBits, stopBits, parity, flowControl, charsetName, readTimeout, writeTimeout,
+            useEnqAck, useChecksum, maxRetries, maxFrameSize, interFrameDelay);
     }
 }
