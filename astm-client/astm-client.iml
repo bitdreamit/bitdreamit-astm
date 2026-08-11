@@ -8,7 +8,6 @@
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="library" exported="" name="client-lib" level="project" />
-    <orderEntry type="library" exported="" name="caduceus-astm-shared" level="project" />
     <orderEntry type="module-library" exported="">
       <library>
         <CLASSES>
