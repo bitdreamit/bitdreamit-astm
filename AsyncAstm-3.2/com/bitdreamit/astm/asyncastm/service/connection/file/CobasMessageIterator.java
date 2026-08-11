@@ -1,0 +1,33 @@
+package com.bitdreamit.astm.asyncastm.service.connection.file;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * COBAS protocol frame iterator.
+ */
+public class CobasMessageIterator implements MessageIterator {
+    private List<String> frames;
+    private int index = 0;
+
+    public CobasMessageIterator(String message) {
+        this.frames = new ArrayList<>();
+        // Split message into frames based on COBAS rules
+        String[] lines = message.split("\r\n|\r|\n");
+        for (String line : lines) {
+            if (!line.trim().isEmpty()) {
+                this.frames.add(line);
+            }
+        }
+    }
+
+    @Override
+    public boolean hasNext() {
+        return index < frames.size();
+    }
+
+    @Override
+    public String nextFrame() {
+        return frames.get(index++);
+    }
+}

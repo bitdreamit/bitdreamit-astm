@@ -2,89 +2,86 @@ package com.bitdreamit.connect.astm;
 
 import com.mirth.connect.donkey.model.channel.ConnectorProperties;
 import com.mirth.connect.donkey.model.message.ConnectorMessage;
+import com.mirth.connect.donkey.model.message.MessageContent;
 import com.mirth.connect.donkey.model.message.Response;
 import com.mirth.connect.donkey.model.message.Status;
-import com.mirth.connect.donkey.server.ConnectorTaskException;
 import com.mirth.connect.donkey.server.channel.DestinationConnector;
-import com.mirth.connect.server.controllers.ControllerFactory;
-import com.mirth.connect.server.controllers.EventController;
-import com.mirth.connect.server.util.TemplateValueReplacer;
-import com.bitdreamit.astm.asyncastm.AsyncAstmTcpDriver;
-import java.rmi.ConnectException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.log4j.Logger;
 
+import java.nio.charset.Charset;
+
 public class AstmDispatcher extends DestinationConnector {
-    private Logger logger = Logger.getLogger(this.getClass());
-    AstmDispatcherProperties connectorProperties;
-    EventController eventController = ControllerFactory.getFactory().createEventController();
-    TemplateValueReplacer replacer = new TemplateValueReplacer();
-    AstmConnectionManager astmMgr;
-    Thread receiverService;
+    private static final Logger logger = Logger.getLogger(AstmDispatcher.class);
 
-    public AstmDispatcher() {
+    private AstmService astmService;
+
+    @Override
+    public void onDeploy() {
+        logger.info("AstmDispatcher deployed");
     }
 
-    public void onDeploy() throws ConnectorTaskException {
-        this.connectorProperties = (AstmDispatcherProperties)this.getConnectorProperties();
+    @Override
+    public void onUndeploy() {
+        logger.info("AstmDispatcher undeployed");
     }
 
-    public void onUndeploy() throws ConnectorTaskException {
-    }
-
-    public void onStart() throws ConnectorTaskException {
-        this.astmMgr = new AstmConnectionManager(this, this.eventController);
-        this.astmMgr.connect();
-    }
-
-    public void onStop() throws ConnectorTaskException {
-        this.astmMgr.disconnect();
-    }
-
-    public void onHalt() throws ConnectorTaskException {
-        this.onStop();
-    }
-
-    public void replaceConnectorProperties(ConnectorProperties connectorProperties, ConnectorMessage connectorMessage) {
-        AstmDispatcherProperties astmProperties = (AstmDispatcherProperties)connectorProperties;
-        astmProperties.setSendTimeout(this.replacer.replaceValues(astmProperties.getSendTimeout(), connectorMessage));
-        astmProperties.setTemplate(this.replacer.replaceValues(astmProperties.getTemplate(), connectorMessage));
-    }
-
-    public Response send(ConnectorProperties connectorProperties, ConnectorMessage connectorMessage) {
-        AsyncAstmTcpDriver asyncAstm = this.astmMgr.getAsyncAstm();
-        AstmDispatcherProperties astmProperties = (AstmDispatcherProperties)connectorProperties;
-        Status responseStatus = Status.PENDING;
-        String responseMessage = "";
-        String responseError = null;
-
+    @Override
+    public void onStart() {
         try {
-            String message = astmProperties.getTemplate();
-            long sendTimeout = NumberUtils.toLong(astmProperties.getSendTimeout());
-            if (sendTimeout > 0L) {
-                asyncAstm.sendMessage(message, sendTimeout, TimeUnit.MILLISECONDS);
-            } else {
-                asyncAstm.sendMessage(message);
-            }
-
-            responseStatus = Status.SENT;
-            responseMessage = "ASTM message sent successfully";
-        } catch (ConnectException var11) {
-            ConnectException e = var11;
-            responseStatus = Status.ERROR;
-            responseError = "Connection error (" + e + ")";
-        } catch (InterruptedException var12) {
-            InterruptedException e = var12;
-            responseStatus = Status.ERROR;
-            responseError = "Interrupted thread exception (" + e + ")";
-        } catch (TimeoutException var13) {
-            TimeoutException e = var13;
-            responseStatus = Status.ERROR;
-            responseError = "Timeout exception (" + e + ")";
+            astmService = new AstmService();
+            astmService.init((AstmProperties) getConnectorProperties());
+            astmService.start();
+            logger.info("AstmDispatcher started");
+        } catch (Exception e) {
+            logger.error("Failed to start ASTM dispatcher", e);
+            throw new RuntimeException("ASTM dispatcher start failed: " + e.getMessage(), e);
         }
+    }
 
-        return new Response(responseStatus, responseMessage, responseMessage, responseError);
+    @Override
+    public void onStop() {
+        try {
+            if (astmService != null) {
+                astmService.stop();
+            }
+        } catch (Exception e) {
+            logger.error("Error stopping ASTM dispatcher", e);
+        }
+    }
+
+    @Override
+    public void onHalt() {
+        try {
+            if (astmService != null) {
+                astmService.stop();
+            }
+        } catch (Exception e) {
+            logger.error("Error halting ASTM dispatcher", e);
+        }
+    }
+
+    @Override
+    public Response send(ConnectorProperties connectorProperties, ConnectorMessage message) {
+        try {
+            AstmProperties props = (AstmProperties) connectorProperties;
+            MessageContent encoded = message.getEncoded();
+            String payload = encoded != null ? encoded.getContent() : "";
+            byte[] data = payload.getBytes(Charset.forName(props.getCharsetName()));
+
+            boolean sent = astmService.send(data);
+            if (sent) {
+                return new Response(String.valueOf(Status.SENT));
+            } else {
+                return new Response(Status.ERROR, "ASTM send returned false");
+            }
+        } catch (Exception e) {
+            logger.error("ASTM dispatch error", e);
+            return new Response(Status.ERROR, e.getMessage());
+        }
+    }
+
+    @Override
+    public void replaceConnectorProperties(ConnectorProperties connectorProperties, ConnectorMessage message) {
+        // No dynamic property replacement needed for ASTM
     }
 }

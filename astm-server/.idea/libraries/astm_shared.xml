@@ -1,7 +1,7 @@
 <component name="libraryTable">
   <library name="astm-shared">
     <CLASSES>
-      <root url="jar://$PROJECT_DIR$/../caduceus-astm-shared/out/artifacts/astm_shared_jar/astm-shared.jar!/" />
+      <root url="jar://$PROJECT_DIR$/../unsign/astm-shared.jar!/" />
     </CLASSES>
     <JAVADOC />
     <SOURCES />

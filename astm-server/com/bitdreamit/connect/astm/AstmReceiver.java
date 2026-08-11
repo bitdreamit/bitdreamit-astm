@@ -1,52 +1,75 @@
 package com.bitdreamit.connect.astm;
 
-import com.mirth.connect.donkey.server.ConnectorTaskException;
 import com.mirth.connect.donkey.server.channel.DispatchResult;
 import com.mirth.connect.donkey.server.channel.SourceConnector;
-import com.mirth.connect.server.controllers.ControllerFactory;
-import com.mirth.connect.server.controllers.EventController;
 import org.apache.log4j.Logger;
 
 public class AstmReceiver extends SourceConnector {
-    private Logger logger = Logger.getLogger(this.getClass());
-    AstmProperties connectorProperties;
-    EventController eventController = ControllerFactory.getFactory().createEventController();
-    AstmConnectionManager astmMgr;
-    Thread receiverService;
+    private static final Logger logger = Logger.getLogger(AstmReceiver.class);
 
-    public AstmReceiver() {
+    private AstmService astmService;
+    private AstmProperties properties;
+    private volatile boolean running = false;
+
+    @Override
+    public void onDeploy() {
+        logger.info("AstmReceiver deployed");
     }
 
-    public void onDeploy() throws ConnectorTaskException {
-        this.connectorProperties = (AstmProperties)this.getConnectorProperties();
+    @Override
+    public void onUndeploy() {
+        logger.info("AstmReceiver undeployed");
     }
 
-    public void onUndeploy() throws ConnectorTaskException {
-    }
+    @Override
+    public void onStart() {
+        properties = (AstmProperties) getConnectorProperties();
+        astmService = new AstmService();
+        astmService.init(properties);
 
-    public void onStart() throws ConnectorTaskException {
-        this.astmMgr = new AstmConnectionManager(this, this.eventController);
-        this.astmMgr.connect();
-        this.receiverService = new Thread(new AstmReceiverService(this, this.astmMgr.getAsyncAstm()));
-        this.receiverService.start();
-    }
+        try {
+            astmService.start();
+            running = true;
+            logger.info("AstmReceiver started with mode: " + properties.getTransportMode());
 
-    public void onStop() throws ConnectorTaskException {
-        if (this.receiverService != null) {
-            this.receiverService.interrupt();
+            // Start the polling service thread
+            AstmReceiverService receiverService = new AstmReceiverService(this, astmService.getDriver());
+            Thread receiverThread = new Thread(receiverService);
+            receiverThread.setName("AstmReceiver-" + getChannelId());
+            receiverThread.start();
+
+        } catch (Exception e) {
+            logger.error("Failed to start ASTM receiver", e);
+            throw new RuntimeException("ASTM receiver start failed: " + e.getMessage(), e);
         }
+    }
 
-        if (this.astmMgr != null) {
-            this.astmMgr.disconnect();
+    @Override
+    public void onStop() {
+        running = false;
+        try {
+            if (astmService != null) {
+                astmService.stop();
+            }
+        } catch (Exception e) {
+            logger.error("Error stopping ASTM receiver", e);
         }
-
     }
 
-    public void onHalt() throws ConnectorTaskException {
-        this.onStop();
+    @Override
+    public void onHalt() {
+        running = false;
+        try {
+            if (astmService != null) {
+                astmService.stop();
+            }
+        } catch (Exception e) {
+            logger.error("Error halting ASTM receiver", e);
+        }
     }
 
+    @Override
     public void handleRecoveredResponse(DispatchResult dispatchResult) {
-        this.finishDispatch(dispatchResult);
+        // No recovery handling needed for ASTM
     }
 }

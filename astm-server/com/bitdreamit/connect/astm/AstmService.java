@@ -1,101 +1,110 @@
 package com.bitdreamit.connect.astm;
 
-import com.mirth.connect.client.core.api.util.OperationUtil;
-import com.mirth.connect.model.ExtensionPermission;
-import com.mirth.connect.plugins.ServicePlugin;
-import com.mirth.connect.server.controllers.ConfigurationController;
-import com.mirth.connect.server.controllers.ControllerFactory;
-import com.mirth.connect.server.controllers.ExtensionController;
-
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.Properties;
-import org.apache.log4j.Appender;
-import org.apache.log4j.ConsoleAppender;
-import org.apache.log4j.Level;
-import org.apache.log4j.LogManager;
+import com.bitdreamit.astm.asyncastm.AsyncAstmDriver;
+import com.bitdreamit.astm.asyncastm.AsyncAstmSerialDriver;
+import com.bitdreamit.astm.asyncastm.AsyncAstmTcpDriver;
+import com.bitdreamit.astm.asyncastm.service.connection.Protocol;
+import com.fazecast.jSerialComm.SerialPort;
 import org.apache.log4j.Logger;
-import org.apache.log4j.PatternLayout;
 
-public class AstmService implements ServicePlugin {
-    public static final String PLUGINPOINT = "ASTM Settings";
-    protected static final String VERSION = "2.4.2";
-    private static final ExtensionController extensionController;
-    ConfigurationController configurationController = ControllerFactory.getFactory().createConfigurationController();
-    private Logger logger = Logger.getLogger(this.getClass());
-    private String driverPackage = "es.bitdreamit.astm.asyncastm";
-    private String extensionPackage = "es.bitdreamit.connect.astm";
-    private Logger driverLogger;
-    private Logger extensionLogger;
-    Appender astmAppender;
+public class AstmService {
+    private static final Logger logger = Logger.getLogger(AstmService.class);
 
+    private AstmProperties properties;
+    private AsyncAstmDriver driver;
+
+    // Original API: no-arg constructor
     public AstmService() {
-        this.driverLogger = LogManager.getLogger(this.driverPackage);
-        this.extensionLogger = LogManager.getLogger(this.extensionPackage);
-        this.astmAppender = new ConsoleAppender(new PatternLayout("%-5p [%t]: %m%n"));
     }
 
-    public String getPluginPointName() {
-        return "ASTM Settings";
+    // Original API: init method (called by AstmReceiver and AstmDispatcher)
+    public void init(AstmProperties props) {
+        this.properties = props;
+        this.driver = createDriver(props);
     }
 
-    public void start() {
-    }
-
-    public void stop() {
-    }
-
-    public void init(Properties properties) {
-        this.driverLogger.addAppender(this.astmAppender);
-        this.extensionLogger.addAppender(this.astmAppender);
-        this.update(properties);
-    }
-
-    public void update(Properties properties) {
-        String serverUUID = this.configurationController.getServerId();
-
-        String driverLevelStr = properties.getProperty("driver_log_level");
-        String extensionLevelStr = properties.getProperty("extension_log_level");
-
-        try {
-            Class<?> log4j2ConfiguratorClass = Class.forName("org.apache.logging.log4j.core.config.Configurator");
-            Class<?> log4j2LevelClass = Class.forName("org.apache.logging.log4j.Level");
-            Method log4j2LevelToLevelMethod = log4j2LevelClass.getMethod("toLevel", String.class);
-            Object log4j2DriverLevel = log4j2LevelToLevelMethod.invoke((Object)null, driverLevelStr);
-            Object log4j2ExtensionLevel = log4j2LevelToLevelMethod.invoke((Object)null, extensionLevelStr);
-            Method log4j2ConfiguratorSetLevelMethod = log4j2ConfiguratorClass.getMethod("setLevel", String.class, log4j2LevelClass);
-            log4j2ConfiguratorSetLevelMethod.invoke((Object)null, this.driverPackage, log4j2DriverLevel);
-            log4j2ConfiguratorSetLevelMethod.invoke((Object)null, this.extensionPackage, log4j2ExtensionLevel);
-            System.out.println("Log4j 2 levels for ASTM extension were set");
-        } catch (ClassNotFoundException var20) {
-            this.driverLogger.setLevel(Level.toLevel(driverLevelStr));
-            this.extensionLogger.setLevel(Level.toLevel(extensionLevelStr));
-            System.out.println("Log4j 2 not found, Log4j log levels were set");
-        } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException | NoSuchMethodException var21) {
-            Exception e = var21;
-            ((Exception)e).printStackTrace();
-        } catch (SecurityException var22) {
-            SecurityException e = var22;
-            e.printStackTrace();
+    public void start() throws Exception {
+        if (driver != null) {
+            driver.start();
         }
-
     }
 
-    public Properties getDefaultProperties() {
-        Properties properties = new Properties();
-        properties.setProperty("driver_log_level", Level.INFO.toString());
-        properties.setProperty("extension_log_level", Level.INFO.toString());
-        return properties;
+    public void stop() throws Exception {
+        if (driver != null) {
+            driver.stop();
+        }
     }
 
-    public ExtensionPermission[] getExtensionPermissions() {
-        ExtensionPermission statusPermission = new ExtensionPermission("ASTM Settings", "Driver Status", "Retrieves the ASTM driver status.", OperationUtil.getOperationNamesForPermission("Driver Status", AstmServletInterface.class, new String[]{"getPluginProperties"}), new String[]{"doShowSettings"});
-        ExtensionPermission setLicensePermission = new ExtensionPermission("ASTM Settings", "Change License", "Sets a new license.", OperationUtil.getOperationNamesForPermission("Change License", AstmServletInterface.class, new String[]{"setPluginProperties"}), new String[]{"doSave"});
-        return new ExtensionPermission[]{statusPermission, setLicensePermission};
+    public boolean send(byte[] data) throws Exception {
+        return driver != null && driver.send(data);
     }
 
-    static {
-        AstmWhitelist.whiteListClasses();
-        extensionController = ControllerFactory.getFactory().createExtensionController();
+    public byte[] receive() throws Exception {
+        return driver != null ? driver.receive() : new byte[0];
+    }
+
+    // Original API: getDriver (called by AstmReceiver)
+    public AsyncAstmDriver getDriver() {
+        return driver;
+    }
+
+    private AsyncAstmDriver createDriver(AstmProperties props) {
+        switch (props.getTransportMode()) {
+            case SERIAL:
+                return createSerialDriver(props);
+            case TCP_SERVER:
+                // FIX: Pass charset and normalize protocol case
+                return new AsyncAstmTcpDriver(
+                        props.getPort(), true,
+                        props.getAstmProtocol().trim().toUpperCase(),
+                        props.getCharsetName());
+            case TCP_CLIENT:
+            default:
+                // FIX: Pass charset and normalize protocol case
+                return new AsyncAstmTcpDriver(
+                        props.getHost(), props.getPort(), false,
+                        props.getAstmProtocol().trim().toUpperCase(),
+                        props.getCharsetName());
+        }
+    }
+
+    private AsyncAstmDriver createSerialDriver(AstmProperties props) {
+        AsyncAstmSerialDriver driver = new AsyncAstmSerialDriver();
+        driver.setPortName(props.getSerialPort());
+        driver.setBaudRate(props.getBaudRate());
+        driver.setDataBits(props.getDataBits());
+
+        int stopBits;
+        switch (props.getStopBits()) {
+            case 2:  stopBits = SerialPort.ONE_POINT_FIVE_STOP_BITS; break;
+            case 3:  stopBits = SerialPort.TWO_STOP_BITS; break;
+            default: stopBits = SerialPort.ONE_STOP_BIT; break;
+        }
+        driver.setStopBits(stopBits);
+
+        int parity;
+        switch (props.getParity()) {
+            case 1:  parity = SerialPort.ODD_PARITY; break;
+            case 2:  parity = SerialPort.EVEN_PARITY; break;
+            case 3:  parity = SerialPort.MARK_PARITY; break;
+            case 4:  parity = SerialPort.SPACE_PARITY; break;
+            default: parity = SerialPort.NO_PARITY; break;
+        }
+        driver.setParity(parity);
+
+        int flow;
+        switch (props.getFlowControl()) {
+            case 1:  flow = SerialPort.FLOW_CONTROL_RTS_ENABLED | SerialPort.FLOW_CONTROL_CTS_ENABLED; break;
+            case 2:  flow = SerialPort.FLOW_CONTROL_XONXOFF_IN_ENABLED | SerialPort.FLOW_CONTROL_XONXOFF_OUT_ENABLED; break;
+            case 3:  flow = SerialPort.FLOW_CONTROL_DSR_ENABLED | SerialPort.FLOW_CONTROL_DTR_ENABLED; break;
+            default: flow = SerialPort.FLOW_CONTROL_DISABLED; break;
+        }
+        driver.setFlowControl(flow);
+
+        // FIX #6: Normalize protocol case
+        driver.setProtocol(props.getAstmProtocol().trim().toUpperCase());
+        driver.setCharset(props.getCharsetName());
+        logger.info("Created Serial ASTM driver on " + props.getSerialPort());
+        return driver;
     }
 }

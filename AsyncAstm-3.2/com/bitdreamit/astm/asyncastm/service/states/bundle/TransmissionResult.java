@@ -1,36 +1,36 @@
 package com.bitdreamit.astm.asyncastm.service.states.bundle;
 
 public class TransmissionResult {
-   private TransmissionResult.Status a;
-   private String b;
+    private Status status;
+    private String description;
 
-   public TransmissionResult(TransmissionResult.Status var1, String var2) {
-      this.a = var1;
-      this.b = var2;
-   }
+    public TransmissionResult(Status status, String description) {
+        this.status = status;
+        this.description = description;
+    }
 
-   public TransmissionResult.Status getStatus() {
-      return this.a;
-   }
+    public Status getStatus() {
+        return status;
+    }
 
-   public void setStatus(TransmissionResult.Status var1) {
-      this.a = var1;
-   }
+    public void setStatus(Status status) {
+        this.status = status;
+    }
 
-   public void setDescription(String var1) {
-      this.b = var1;
-   }
+    public String getDescription() {
+        return description;
+    }
 
-   public String getDescription() {
-      return this.b;
-   }
+    public void setDescription(String description) {
+        this.description = description;
+    }
 
-   public static enum Status {
-      SUCCESS,
-      TIMEOUT,
-      DISCONNECTED,
-      REJECTED,
-      INTERRUPTED,
-      UNKNOWN;
-   }
+    public static enum Status {
+        SUCCESS,
+        TIMEOUT,
+        DISCONNECTED,
+        REJECTED,
+        INTERRUPTED,
+        UNKNOWN
+    }
 }

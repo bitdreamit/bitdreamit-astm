@@ -1,273 +1,164 @@
 package com.bitdreamit.astm.asyncastm;
 
-import com.bitdreamit.astm.asyncastm.service.states.bundle.a;
+import com.bitdreamit.astm.asyncastm.service.connection.AbstractAstmConnection;
+import com.bitdreamit.astm.asyncastm.service.connection.AstmTcpClientConnection;
+import com.bitdreamit.astm.asyncastm.service.connection.AstmTcpServerConnection;
 import com.bitdreamit.astm.asyncastm.service.connection.Protocol;
-import com.bitdreamit.astm.asyncastm.service.connection.b;
-import com.bitdreamit.astm.asyncastm.service.connection.d;
-import com.bitdreamit.astm.asyncastm.service.connection.e;
-import com.bitdreamit.astm.asyncastm.service.states.j;
+import com.bitdreamit.astm.asyncastm.service.states.AstmStateMachine;
+import com.bitdreamit.astm.asyncastm.service.states.bundle.AstmContext;
 import com.bitdreamit.astm.asyncastm.service.states.bundle.ReceivedMessage;
 import com.bitdreamit.astm.asyncastm.service.states.bundle.TransmissionResult;
 import com.bitdreamit.astm.asyncastm.service.states.callback.AstmConnectionStatus;
 import com.bitdreamit.astm.asyncastm.service.states.callback.AstmStatusCallback;
-import java.io.Closeable;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.rmi.ConnectException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import org.apache.log4j.Logger;
 
-public class AsyncAstmTcpDriver implements Closeable {
-   private static final Logger a = Logger.getLogger(AsyncAstmTcpDriver.class.getName());
-   private static List<j> b = new ArrayList();
-   private String c;
-   private AstmStatusCallback d;
-   private j e;
-   private int f;
-   private String g;
-   private int h;
-   private String i;
+import java.net.InetSocketAddress;
 
-   private static volatile int[] j;
+public class AsyncAstmTcpDriver implements AsyncAstmDriver {
+    private static final Logger logger = Logger.getLogger(AsyncAstmTcpDriver.class);
 
-   public int getListeningPort() {
-      return this.f;
-   }
+    private String name;
+    private AstmStatusCallback callback;
+    private String bindAddress;
+    private int listeningPort;
+    private String destinationAddress;
+    private int destinationPort;
+    private boolean serverMode;
+    private Protocol protocol;
+    private String charset = "windows-1252";
 
-   public String getBindAddress() {
-      return this.g;
-   }
+    private AstmContext context;
+    private AstmStateMachine stateMachine;
 
-   public int getDestinationPort() {
-      return this.h;
-   }
+    public AsyncAstmTcpDriver(String name, AstmStatusCallback callback) {
+        this.name = name;
+        this.callback = callback;
+    }
 
-   public String getDestinationAddress() {
-      return this.i;
-   }
+    public AsyncAstmTcpDriver(String host, int port, boolean serverMode, String protocolStr, String charset) {
+        this.destinationAddress = host;
+        this.destinationPort = port;
+        this.serverMode = serverMode;
+        this.protocol = Protocol.valueOf(protocolStr.trim().toUpperCase());
+        this.charset = charset;
+    }
 
-   public AsyncAstmTcpDriver(String var1) {
-      this(var1, new AstmStatusCallback() {
-         public final void reportStatus(AstmConnectionStatus var1) {
-         }
-      });
-   }
+    public AsyncAstmTcpDriver(int port, boolean serverMode, String protocolStr, String charset) {
+        this.listeningPort = port;
+        this.serverMode = serverMode;
+        this.protocol = Protocol.valueOf(protocolStr.trim().toUpperCase());
+        this.charset = charset;
+    }
 
-   public AsyncAstmTcpDriver(String var1, AstmStatusCallback var2) {
-      this.c = "";
-      this.c = var1;
-      this.d = var2;
-   }
+    public void setCharset(String charset) { this.charset = charset; }
+    public String getBindAddress() { return bindAddress; }
+    public int getListeningPort() { return listeningPort; }
+    public String getDestinationAddress() { return destinationAddress; }
+    public int getDestinationPort() { return destinationPort; }
 
-   public void initiateConnection(String var1, int var2, Protocol var3) throws IOException, LicenseException {
-      this.i = var1;
-      this.h = var2;
-      d var5 = new d(new InetSocketAddress(this.i, this.h), var3, this.c);
-      Class var6 = AsyncAstmTcpDriver.class;
-      synchronized(AsyncAstmTcpDriver.class) {
-         int var7;
-         if ((var7 = this.a((b)var5)) == -1) {
-            AsyncAstmLicense.a(b.size() + 1);
-            a.debug(this.c + ": Creating new client connection");
-            this.a(new a(var5));
-            b.add(this.e);
-         } else {
-            a.debug(this.c + ": Reusing existing client connection");
-            this.e = (j)b.get(var7);
-            this.e.a(this.d);
-            this.d.reportStatus(this.e.e());
-            this.c = this.e.d().d().c();
-         }
-      }
-
-      this.e.a();
-   }
-
-   public int listenConnections(int var1, String var2, Protocol var3) throws IOException {
-      if (var2 == null) {
-         var2 = "0.0.0.0";
-      }
-
-      this.g = var2;
-      e var5 = new e(var1, var2, var3, this.c);
-      Class var6 = AsyncAstmTcpDriver.class;
-      synchronized(AsyncAstmTcpDriver.class) {
-         int var7;
-         if ((var7 = this.a((b)var5)) == -1) {
-            a.debug(this.c + ": Creating new host connection");
-            this.f = var5.l();
-            this.a(new a(var5));
-            b.add(this.e);
-         } else {
-            a.debug(this.c + ": Reusing existing host connection");
-            this.e = (j)b.get(var7);
-            this.e.a(this.d);
-            this.d.reportStatus(this.e.e());
-            this.c = this.e.d().d().c();
-            this.f = this.e.d().d().i().getPort();
-         }
-      }
-
-      this.e.a();
-      return this.f;
-   }
-
-   private void a(com.bitdreamit.astm.asyncastm.service.states.bundle.a var1) throws IOException {
-      this.e = new j(var1);
-      this.e.a(this.d);
-      this.e.f();
-   }
-
-   private int a(b var1) {
-      boolean var2 = false;
-      int var3 = 0;
-
-      while(var3 < b.size() && !var2) {
-         com.bitdreamit.astm.asyncastm.service.states.bundle.a var4;
-         if ((var4 = ((j)b.get(var3)).d()).d().i().equals(var1.i()) && var4.d().j() == var1.j()) {
-            if (!var4.d().b().equals(var1.b())) {
-               String var6 = this.c + ": There is a previous connection bound to the same address using another protocol (" + var4.d().b() + ")";
-               a.fatal(var6);
-               throw new IllegalStateException(var6);
+    public void listenConnections(int port, String bindAddress, Protocol protocol) {
+        this.listeningPort = port;
+        this.bindAddress = bindAddress;
+        this.protocol = protocol;
+        try {
+            AbstractAstmConnection conn = new AstmTcpServerConnection(port, bindAddress, protocol, charset);
+            this.context = new AstmContext(conn);
+            this.stateMachine = new AstmStateMachine(context);
+            stateMachine.start();
+            if (callback != null) {
+                callback.reportStatus(AstmConnectionStatus.CONNECTING);
             }
+            logger.info("Server listening on " + bindAddress + ":" + port);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to listen on " + bindAddress + ":" + port, e);
+        }
+    }
 
-            var2 = true;
-         } else {
-            ++var3;
-         }
-      }
-
-      return var2 ? var3 : -1;
-   }
-
-   public void sendMessage(String var1) throws InterruptedException, TimeoutException, ConnectException {
-      TransmissionResult var3 = this.e.d().a(var1);
-      this.exceptResult(var3);
-   }
-
-   public void sendMessage(String var1, long var2, TimeUnit var4) throws InterruptedException, ConnectException, RejectedExecutionException, TimeoutException {
-      TransmissionResult var6 = this.e.d().a(var1, var2, var4);
-      this.exceptResult(var6);
-   }
-
-   public ReceivedMessage getReceivedMessage() throws InterruptedException {
-      return this.e.d().c();
-   }
-
-   public ReceivedMessage getReceivedMessage(long var1, TimeUnit var3) throws InterruptedException {
-      return this.e.d().a(var1, var3);
-   }
-
-   public String getMessage() throws InterruptedException, ConnectException, TimeoutException, RejectedExecutionException {
-      ReceivedMessage var1 = this.e.d().c();
-      this.exceptResult(var1.getResult());
-      return var1.getMessage();
-   }
-
-   public String getMessage(long var1, TimeUnit var3) throws InterruptedException,ConnectException, TimeoutException, RejectedExecutionException {
-      ReceivedMessage var5;
-      if ((var5 = this.e.d().a(var1, var3)) == null) {
-         return null;
-      } else {
-         this.exceptResult(var5.getResult());
-         return var5.getMessage();
-      }
-   }
-
-   public void exceptResult(TransmissionResult var1) throws TimeoutException, ConnectException, InterruptedException, RejectedExecutionException {
-      switch(a()[var1.getStatus().ordinal()]) {
-      case 1:
-         return;
-      case 2:
-         throw new TimeoutException(var1.getDescription());
-      case 3:
-         throw new ConnectException(var1.getDescription());
-      case 4:
-         throw new RejectedExecutionException(var1.getDescription());
-      case 5:
-         throw new InterruptedException(var1.getDescription());
-      case 6:
-         throw new RuntimeException(var1.getDescription());
-      default:
-         throw new RuntimeException(var1.getDescription());
-      }
-   }
-
-   public synchronized void close() throws IOException {
-      if (this.e != null) {
-         this.e.b();
-         if (this.e.c() == 0) {
-            a.info(this.c + ": No more access found, closing ASTM connection");
-
-            try {
-               this.e.close();
-            } catch (Exception var5) {
-               a.fatal(this.c + ": ASTM connection not correctly ended", var5);
+    public void initiateConnection(String host, int port, Protocol protocol) {
+        this.destinationAddress = host;
+        this.destinationPort = port;
+        this.protocol = protocol;
+        try {
+            AbstractAstmConnection conn = new AstmTcpClientConnection(new InetSocketAddress(host, port), protocol, charset);
+            this.context = new AstmContext(conn);
+            this.stateMachine = new AstmStateMachine(context);
+            stateMachine.start();
+            if (callback != null) {
+                callback.reportStatus(AstmConnectionStatus.CONNECTING);
             }
+            logger.info("Client connected to " + host + ":" + port);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to connect to " + host + ":" + port, e);
+        }
+    }
 
-            try {
-               Class var1 = AsyncAstmTcpDriver.class;
-               synchronized(AsyncAstmTcpDriver.class) {
-                  int var2;
-                  if ((var2 = this.a(this.e.d().d())) != -1) {
-                     b.remove(var2);
-                     a.debug(this.c + ": Removed state machine from the pool");
-                  }
-               }
-            } catch (NullPointerException var4) {
-               a.error("Rare null pointer exception when removing device", var4);
+    public void close() {
+        try {
+            if (stateMachine != null) {
+                stateMachine.close();
             }
-         } else {
-            a.info(this.c + ": There are more access, ASTM connection stays open");
-         }
+            if (callback != null) {
+                callback.reportStatus(AstmConnectionStatus.DISCONNECTING);
+            }
+            logger.info("AsyncAstmTcpDriver closed");
+        } catch (Exception e) {
+            logger.error("Error closing driver", e);
+        }
+    }
 
-         this.e.b(this.d);
-      }
-   }
+    @Override
+    public void start() throws Exception {
+        // FIX #1: Auto-initialize from stored fields if context is null
+        if (this.context == null) {
+            if (this.serverMode) {
+                if (this.listeningPort <= 0) {
+                    throw new IllegalStateException("Server mode but no listening port configured");
+                }
+                String bind = (this.bindAddress != null) ? this.bindAddress : "0.0.0.0";
+                listenConnections(this.listeningPort, bind, this.protocol);
+            } else {
+                if (this.destinationAddress == null || this.destinationPort <= 0) {
+                    throw new IllegalStateException("Client mode but no destination host/port configured");
+                }
+                initiateConnection(this.destinationAddress, this.destinationPort, this.protocol);
+            }
+        }
+    }
 
-   private static int[] a() {
-      int[] var10000 = j;
-      if (var10000 != null) {
-         return var10000;
-      } else {
-         int[] var0 = new int[TransmissionResult.Status.values().length];
+    @Override
+    public void stop() throws Exception {
+        close();
+    }
 
-         try {
-            var0[TransmissionResult.Status.DISCONNECTED.ordinal()] = 3;
-         } catch (NoSuchFieldError var6) {
-         }
+    @Override
+    public boolean send(byte[] data) throws Exception {
+        if (context == null) return false;
+        TransmissionResult result = context.sendMessage(new String(data, charset));
+        return result.getStatus() == TransmissionResult.Status.SUCCESS;
+    }
 
-         try {
-            var0[TransmissionResult.Status.INTERRUPTED.ordinal()] = 5;
-         } catch (NoSuchFieldError var5) {
-         }
+    @Override
+    public byte[] receive() throws Exception {
+        // FIX: Actually implement receive() instead of returning empty array
+        if (context == null) throw new IllegalStateException("Driver not started");
+        ReceivedMessage msg = context.getReceivedMessage();
+        return msg != null ? msg.getMessage().getBytes(charset) : new byte[0];
+    }
 
-         try {
-            var0[TransmissionResult.Status.REJECTED.ordinal()] = 4;
-         } catch (NoSuchFieldError var4) {
-         }
+    @Override
+    public boolean isConnected() {
+        return stateMachine != null && stateMachine.getCurrentStatus() != null;
+    }
 
-         try {
-            var0[TransmissionResult.Status.SUCCESS.ordinal()] = 1;
-         } catch (NoSuchFieldError var3) {
-         }
+    @Override
+    public ReceivedMessage getReceivedMessage() throws InterruptedException {
+        if (context == null) throw new IllegalStateException("Driver not started");
+        return context.getReceivedMessage();
+    }
 
-         try {
-            var0[TransmissionResult.Status.TIMEOUT.ordinal()] = 2;
-         } catch (NoSuchFieldError var2) {
-         }
-
-         try {
-            var0[TransmissionResult.Status.UNKNOWN.ordinal()] = 6;
-         } catch (NoSuchFieldError var1) {
-         }
-
-         j = var0;
-         return var0;
-      }
-   }
+    @Override
+    public TransmissionResult sendMessage(String message) throws InterruptedException {
+        if (context == null) throw new IllegalStateException("Driver not started");
+        return context.sendMessage(message);
+    }
 }

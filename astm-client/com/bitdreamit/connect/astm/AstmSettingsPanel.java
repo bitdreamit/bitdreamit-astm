@@ -1,634 +1,153 @@
 package com.bitdreamit.connect.astm;
 
-import com.mirth.connect.client.core.ClientException;
 import com.mirth.connect.client.ui.AbstractSettingsPanel;
-import com.mirth.connect.client.ui.Frame;
-import com.mirth.connect.client.ui.Mirth;
-import com.mirth.connect.client.ui.PlatformUI;
-import com.mirth.connect.client.ui.UIConstants;
-import com.mirth.connect.client.ui.components.MirthComboBox;
-import com.mirth.connect.client.ui.components.MirthTextField;
-import com.mirth.connect.plugins.SettingsPanelPlugin;
-import java.awt.BorderLayout;
-import java.awt.CardLayout;
-import java.awt.Color;
-import java.awt.Component;
-import java.awt.Cursor;
-import java.awt.Desktop;
-import java.awt.Dimension;
-import java.awt.FlowLayout;
-import java.awt.Font;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
-import java.awt.Insets;
-import java.awt.Toolkit;
-import java.awt.datatransfer.Clipboard;
-import java.awt.datatransfer.ClipboardOwner;
-import java.awt.datatransfer.StringSelection;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.io.File;
-import java.io.IOException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.nio.file.Files;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Properties;
-import java.util.concurrent.ExecutionException;
-import java.util.prefs.Preferences;
-import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
-import javax.swing.DefaultComboBoxModel;
-import javax.swing.ImageIcon;
-import javax.swing.JButton;
-import javax.swing.JComponent;
-import javax.swing.JFileChooser;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
-import javax.swing.SwingWorker;
-import javax.swing.border.Border;
-import javax.swing.filechooser.FileFilter;
-import org.apache.commons.io.FilenameUtils;
+import com.mirth.connect.donkey.model.channel.ConnectorProperties;
+import com.mirth.connect.donkey.util.DonkeyElement;
+import net.miginfocom.swing.MigLayout;
 
+import javax.swing.*;
+import javax.swing.border.CompoundBorder;
+import javax.swing.border.EmptyBorder;
+import javax.swing.border.LineBorder;
+import java.awt.*;
+
+/**
+ * Bit Dream IT — ASTM Extension Global Settings Panel
+ * Professional information panel with dialect guide and feature overview.
+ */
 public class AstmSettingsPanel extends AbstractSettingsPanel {
-    private SettingsPanelPlugin plugin;
-    private Frame parent;
-    private static Preferences userPreferences;
-    private int removeLicenseIndex;
-    private List<JComponent[]> statusPropertiesComponents = new ArrayList();
-    FileFilter licenseFileFilter = new FileFilter() {
-        public String getDescription() {
-            return "License files (.lic, .bin, .txt)";
-        }
 
-        public boolean accept(File f) {
-            return f.isDirectory() || FilenameUtils.getExtension(f.getName()).equalsIgnoreCase("lic") || FilenameUtils.getExtension(f.getName()).equalsIgnoreCase("bin") || FilenameUtils.getExtension(f.getName()).equalsIgnoreCase("txt");
-        }
-    };
-    private JLabel driverJlabel;
-    private MirthTextField expirationContentField;
-    private JLabel expirationTitleLabel;
-    private JLabel extensionJlabel;
-    private Box.Filler filler1;
-    private Box.Filler filler2;
-    private Box.Filler horizontalMargin;
-    private MirthComboBox<String> logLevelDriverComboBox;
-    private MirthComboBox<String> logLevelExtensionComboBox;
-    private JPanel loggerPanel;
-    private JLabel logo;
-    private JPanel logoPanel;
-    private JPanel marginPanel;
-    private JPanel marginSettingsPanel;
-    private JPanel marginSettingsPanel1;
-    private JPanel marginStatusPanel;
-    private JPanel marginSystemInfoPanel;
-    private JLabel noLicenseLabel;
-    private JPanel sectionsjPanel;
-    private JPanel settingsPanel;
-    private JPanel statusCardPanel;
-    private JPanel statusPanel;
-    private JPanel statusPropsTable;
-    private JPanel systemInfoPanel;
-    private JPanel sytemInfoPropsTable;
-    private MirthTextField uuidContentField;
-    private JButton uuidCopyButton;
-    private JLabel uuidTitleLabel;
-    private MirthTextField validityContentField;
-    private JLabel validityTitleLabel;
-    private Box.Filler verticalMargin;
+    private static final Color BRAND_BLUE = new Color(0x1E, 0x5A, 0xA8);
+    private static final Color BRAND_LIGHT = new Color(0xE8, 0xF0, 0xFA);
+    private static final Color SECTION_BG = new Color(0xFA, 0xFA, 0xFA);
 
-    public AstmSettingsPanel(String tabName, SettingsPanelPlugin plugin) {
-        super(tabName);
-        this.plugin = plugin;
-        this.parent = PlatformUI.MIRTH_FRAME;
-        userPreferences = Preferences.userNodeForPackage(Mirth.class);
-        this.addTask("browseLicenseFile", "Upload license", "Browse and upload a license file, overwriting previous one if existing", "", new ImageIcon(Frame.class.getResource("images/page_white_text.png")));
-        this.removeLicenseIndex = this.addTask("removeLicense", "Remove license", "Removes a license from the server", "", new ImageIcon(Frame.class.getResource("images/cross.png")));
-        this.initComponents();
-    }
-
-    public void doRefresh() {
-        if (!PlatformUI.MIRTH_FRAME.alertRefresh()) {
-            final String workingId = this.getFrame().startWorking("Loading " + this.getTabName() + " properties...");
-            final Properties serverProperties = new Properties();
-            final Map<String, Object> statusMap = new HashMap();
-            SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
-                public Void doInBackground() throws ClientException {
-                    Properties propertiesFromServer = AstmSettingsPanel.this.plugin.getPropertiesFromServer();
-                    if (propertiesFromServer != null) {
-                        serverProperties.putAll(propertiesFromServer);
-                    }
-
-                    Map<String, Object> statusFromServer = ((AstmServletInterface)AstmSettingsPanel.this.parent.mirthClient.getServlet(AstmServletInterface.class)).getStatusMap();
-                    if (statusFromServer != null) {
-                        statusMap.putAll(statusFromServer);
-                    }
-
-                    return null;
-                }
-
-                public void done() {
-                    AstmSettingsPanel.this.getFrame().stopWorking(workingId);
-
-                    try {
-                        this.get();
-                        AstmSettingsPanel.this.displayProperties(serverProperties);
-                        AstmSettingsPanel.this.displayStatus(statusMap);
-                    } catch (Exception var4) {
-                        Exception e = var4;
-                        Throwable t = e;
-                        if (e instanceof ExecutionException) {
-                            Throwable cause = e.getCause();
-                            if (cause instanceof ClientException) {
-                                t = cause.getCause();
-                            } else {
-                                t = cause;
-                            }
-                        }
-
-                        AstmSettingsPanel.this.getFrame().alertThrowable(AstmSettingsPanel.this.getFrame(), (Throwable)t);
-                    }
-
-                }
-            };
-            worker.execute();
-        }
-    }
-
-    private void displayProperties(Properties properties) {
-        this.logLevelExtensionComboBox.setSelectedItem(properties.getProperty("extension_log_level"));
-        this.logLevelDriverComboBox.setSelectedItem(properties.getProperty("driver_log_level"));
-        this.setSaveEnabled(false);
-    }
-
-    private void displayStatus(Map<String, Object> statusMap) {
-        this.removeStatusProperties();
-        CardLayout cl = (CardLayout) this.statusCardPanel.getLayout();
-        cl.show(this.statusCardPanel, "props");
-        this.setDeleteLicenseVisible(true);
-
-        // Set validity to "VALID" with green color
-        this.validityContentField.setForeground(new Color(0, 200, 0));
-        this.validityContentField.setText("VALID");
-
-        // Set expiration to 99999 days from now
-        Date expDate = Date.from(ZonedDateTime.now().plusDays(99999).toInstant());
-        String expirationStr = DateTimeFormatter.ofPattern("EEEE, dd MMMM yyyy HH:mm:ss z", Locale.ENGLISH)
-                .format(expDate.toInstant().atZone(ZoneId.systemDefault()));
-        this.expirationContentField.setText(expirationStr);
-
-        // Add static status properties
-        this.addStatusProperty("Not before", "Tuesday, 01 January 2030 12:00:00 UTC");
-        this.addStatusProperty("Allowed version", "1.0.0");
-        this.addStatusProperty("Max. connections", "100");
-        this.addStatusProperty("Licensed UUID", "123e4567-e89b-12d3-a456-426614174000");
-        this.addStatusProperty("Licensed to", "Md. Siraj-Ud-Doulla");
-        this.addStatusProperty("Notes", "Only For Bit Dream IT.");
-
-        // Set static UUID
-        this.uuidContentField.setText("123e4567-e89b-12d3-a456-426614174000");
-    }
-
-
-    private void addStatusProperty(JComponent name, JComponent value) {
-        int lastY = 2;
-        GridBagConstraints gbc;
-        if (!this.statusPropertiesComponents.isEmpty()) {
-            GridBagLayout gbl = (GridBagLayout)this.statusPropsTable.getLayout();
-            Component[] lastComponents = (Component[])this.statusPropertiesComponents.get(this.statusPropertiesComponents.size() - 1);
-            gbc = gbl.getConstraints(lastComponents[0]);
-            lastY = gbc.gridy;
-        }
-
-        gbc = new GridBagConstraints();
-        gbc.insets = new Insets(2, 4, 2, 4);
-        gbc.gridx = 0;
-        gbc.gridy = lastY + 1;
-        gbc.anchor = 22;
-        this.statusPropsTable.add(name, gbc);
-        gbc.gridx = 1;
-        gbc.gridy = lastY + 1;
-        gbc.anchor = 21;
-        this.statusPropsTable.add(value, gbc);
-        this.statusPropertiesComponents.add(new JComponent[]{name, value});
-    }
-
-    private void addStatusProperty(String name, String value) {
-        JLabel nameLabel = new JLabel(name + ":");
-        nameLabel.setHorizontalAlignment(0);
-        MirthTextField valueLabel = new MirthTextField();
-        valueLabel.setText(value);
-        valueLabel.setBackground((Color)null);
-        valueLabel.setEditable(false);
-        valueLabel.setBorder((Border)null);
-        valueLabel.setHorizontalAlignment(0);
-        this.addStatusProperty((JComponent)nameLabel, (JComponent)valueLabel);
-    }
-
-    private void removeStatusProperties() {
-        Iterator var1 = this.statusPropertiesComponents.iterator();
-
-        while(var1.hasNext()) {
-            JComponent[] components = (JComponent[])var1.next();
-            JComponent[] var3 = components;
-            int var4 = components.length;
-
-            for(int var5 = 0; var5 < var4; ++var5) {
-                JComponent component = var3[var5];
-                this.statusPropsTable.remove(component);
-            }
-        }
-
-        this.statusPropertiesComponents.clear();
-    }
-
-    private void setDeleteLicenseVisible(boolean visible) {
-        this.setVisibleTasks(this.removeLicenseIndex, this.removeLicenseIndex, visible);
-    }
-
-    private Properties extractProperties() {
-        Properties properties = new Properties();
-        properties.setProperty("extension_log_level", (String)this.logLevelExtensionComboBox.getSelectedItem());
-        properties.setProperty("driver_log_level", (String)this.logLevelDriverComboBox.getSelectedItem());
-        return properties;
-    }
-
-    private void uploadLicenseFile(final File licenseFile) {
-        final String workingId = this.getFrame().startWorking("Uploading license...");
-        SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
-            public Void doInBackground() throws Exception {
-                byte[] licenseBytes = Files.readAllBytes(licenseFile.toPath());
-                ((AstmServletInterface)AstmSettingsPanel.this.parent.mirthClient.getServlet(AstmServletInterface.class)).setLicense(licenseBytes);
-                return null;
-            }
-
-            public void done() {
-                AstmSettingsPanel.this.getFrame().stopWorking(workingId);
-
-                try {
-                    this.get();
-                    AstmSettingsPanel.this.doRefresh();
-                    AstmSettingsPanel.this.getFrame().alertInformation(AstmSettingsPanel.this.getFrame(), "License successfully applied");
-                } catch (ExecutionException var3) {
-                    ExecutionException ex = var3;
-                    Throwable cause = ex.getCause();
-                    if (cause instanceof ClientException) {
-                        AstmSettingsPanel.this.getFrame().alertError(AstmSettingsPanel.this.getFrame(), "Error uploading license.\n\n" + cause.getCause().getMessage());
-                    } else {
-                        AstmSettingsPanel.this.getFrame().alertThrowable(AstmSettingsPanel.this.getFrame(), ex);
-                    }
-                } catch (InterruptedException var4) {
-                    InterruptedException e = var4;
-                    AstmSettingsPanel.this.getFrame().alertThrowable(AstmSettingsPanel.this.getFrame(), e);
-                }
-
-            }
-        };
-        worker.execute();
-    }
-
-    public boolean doSave() {
-        final String workingId = this.getFrame().startWorking("Saving settings...");
-        SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
-            public Void doInBackground() throws Exception {
-                AstmSettingsPanel.this.plugin.setPropertiesToServer(AstmSettingsPanel.this.extractProperties(), true);
-                return null;
-            }
-
-            public void done() {
-                AstmSettingsPanel.this.getFrame().stopWorking(workingId);
-
-                try {
-                    this.get();
-                    AstmSettingsPanel.this.setSaveEnabled(false);
-                    AstmSettingsPanel.this.doRefresh();
-                } catch (ExecutionException var3) {
-                    ExecutionException ex = var3;
-                    Throwable cause = ex.getCause();
-                    if (cause instanceof ClientException) {
-                        AstmSettingsPanel.this.getFrame().alertThrowable(AstmSettingsPanel.this.getFrame(), cause.getCause());
-                    } else {
-                        AstmSettingsPanel.this.getFrame().alertThrowable(AstmSettingsPanel.this.getFrame(), ex);
-                    }
-                } catch (InterruptedException var4) {
-                    InterruptedException e = var4;
-                    AstmSettingsPanel.this.getFrame().alertThrowable(AstmSettingsPanel.this.getFrame(), e);
-                }
-
-            }
-        };
-        worker.execute();
-        return true;
-    }
-
-    public void removeLicense() {
-        if (PlatformUI.MIRTH_FRAME.alertOption(this.parent, "Are you sure you want to delete the current license?")) {
-            final String workingId = this.getFrame().startWorking("Removing license...");
-            SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
-                public Void doInBackground() throws ClientException {
-                    ((AstmServletInterface)AstmSettingsPanel.this.parent.mirthClient.getServlet(AstmServletInterface.class)).removeLicense();
-                    AstmSettingsPanel.this.doRefresh();
-                    return null;
-                }
-
-                public void done() {
-                    AstmSettingsPanel.this.getFrame().stopWorking(workingId);
-
-                    try {
-                        this.get();
-                        AstmSettingsPanel.this.getFrame().alertInformation(AstmSettingsPanel.this.getFrame(), "License successfully removed");
-                    } catch (Exception var4) {
-                        Exception e = var4;
-                        Throwable t = e;
-                        if (e instanceof ExecutionException) {
-                            Throwable cause = e.getCause();
-                            if (cause instanceof ClientException) {
-                                t = cause.getCause();
-                            } else {
-                                t = cause;
-                            }
-                        }
-
-                        AstmSettingsPanel.this.getFrame().alertThrowable(AstmSettingsPanel.this.getFrame(), (Throwable)t);
-                    }
-
-                }
-            };
-            worker.execute();
-        }
-    }
-
-    public void browseLicenseFile() {
-        JFileChooser importFileChooser = new JFileChooser();
-        importFileChooser.setDialogTitle("Choose a license file");
-        importFileChooser.setFileFilter(this.licenseFileFilter);
-        File currentDir = new File(userPreferences.get("AstmLicenseDirectory", ""));
-        if (currentDir.exists()) {
-            importFileChooser.setCurrentDirectory(currentDir);
-        }
-
-        if (importFileChooser.showOpenDialog(this) == 0) {
-            userPreferences.put("AstmLicenseDirectory", importFileChooser.getCurrentDirectory().getPath());
-            this.uploadLicenseFile(importFileChooser.getSelectedFile());
-        }
-
+    public AstmSettingsPanel(boolean isSender) {
+        super("ASTM Settings");
+        initComponents();
     }
 
     private void initComponents() {
-        this.verticalMargin = new Box.Filler(new Dimension(0, 0), new Dimension(0, 12), new Dimension(0, 0));
-        this.horizontalMargin = new Box.Filler(new Dimension(0, 0), new Dimension(12, 0), new Dimension(0, 0));
-        this.marginPanel = new JPanel();
-        this.sectionsjPanel = new JPanel();
-        this.statusPanel = new JPanel();
-        this.marginStatusPanel = new JPanel();
-        this.statusCardPanel = new JPanel();
-        this.statusPropsTable = new JPanel();
-        this.validityTitleLabel = new JLabel();
-        this.validityContentField = new MirthTextField();
-        this.expirationTitleLabel = new JLabel();
-        this.expirationContentField = new MirthTextField();
-        this.noLicenseLabel = new JLabel();
-        this.filler1 = new Box.Filler(new Dimension(0, 0), new Dimension(0, 10), new Dimension(0, 0));
-        this.systemInfoPanel = new JPanel();
-        this.marginSystemInfoPanel = new JPanel();
-        this.sytemInfoPropsTable = new JPanel();
-        this.uuidTitleLabel = new JLabel();
-        this.uuidContentField = new MirthTextField();
-        this.uuidCopyButton = new JButton();
-        this.settingsPanel = new JPanel();
-        this.marginSettingsPanel = new JPanel();
-        this.loggerPanel = new JPanel();
-        this.extensionJlabel = new JLabel();
-        this.logLevelExtensionComboBox = new MirthComboBox();
-        this.driverJlabel = new JLabel();
-        this.logLevelDriverComboBox = new MirthComboBox();
-        this.filler2 = new Box.Filler(new Dimension(0, 0), new Dimension(0, 10), new Dimension(0, 0));
-        this.logoPanel = new JPanel();
-        this.marginSettingsPanel1 = new JPanel();
-        this.logo = new JLabel();
-        this.setBackground(UIConstants.BACKGROUND_COLOR);
-        this.setPreferredSize(new Dimension(800, 600));
-        this.setLayout(new BorderLayout());
-        this.add(this.verticalMargin, "North");
-        this.add(this.horizontalMargin, "West");
-        this.marginPanel.setBackground(UIConstants.BACKGROUND_COLOR);
-        this.marginPanel.setLayout(new BorderLayout());
-        this.sectionsjPanel.setBackground(UIConstants.BACKGROUND_COLOR);
-        this.sectionsjPanel.setLayout(new BoxLayout(this.sectionsjPanel, 1));
-        this.statusPanel.setBackground(UIConstants.BACKGROUND_COLOR);
-        this.statusPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(204, 204, 204)), "License status", 0, 0, new Font("Tahoma", 1, 11)));
-        this.statusPanel.setLayout(new BorderLayout());
-        this.marginStatusPanel.setBackground(UIConstants.BACKGROUND_COLOR);
-        this.marginStatusPanel.setLayout(new FlowLayout(0, 12, 0));
-        this.statusCardPanel.setBackground(UIConstants.BACKGROUND_COLOR);
-        this.statusCardPanel.setLayout(new CardLayout());
-        this.statusPropsTable.setBackground(UIConstants.BACKGROUND_COLOR);
-        GridBagLayout statusPropsPanelLayout = new GridBagLayout();
-        statusPropsPanelLayout.columnWeights = new double[]{0.5, 0.5};
-        statusPropsPanelLayout.rowWeights = new double[]{0.5, 0.5};
-        this.statusPropsTable.setLayout(statusPropsPanelLayout);
-        this.validityTitleLabel.setHorizontalAlignment(0);
-        this.validityTitleLabel.setText("Validity:");
-        GridBagConstraints gridBagConstraints = new GridBagConstraints();
-        gridBagConstraints.gridx = 0;
-        gridBagConstraints.gridy = 0;
-        gridBagConstraints.anchor = 22;
-        gridBagConstraints.insets = new Insets(2, 4, 2, 4);
-        this.statusPropsTable.add(this.validityTitleLabel, gridBagConstraints);
-        this.validityContentField.setEditable(false);
-        this.validityContentField.setBackground((Color)null);
-        this.validityContentField.setHorizontalAlignment(2);
-        this.validityContentField.setBorder((Border)null);
-        this.validityContentField.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent evt) {
-                AstmSettingsPanel.this.validityContentFieldActionPerformed(evt);
-            }
-        });
-        gridBagConstraints = new GridBagConstraints();
-        gridBagConstraints.gridx = 1;
-        gridBagConstraints.gridy = 0;
-        gridBagConstraints.anchor = 21;
-        gridBagConstraints.insets = new Insets(2, 4, 2, 4);
-        this.statusPropsTable.add(this.validityContentField, gridBagConstraints);
-        this.expirationTitleLabel.setHorizontalAlignment(0);
-        this.expirationTitleLabel.setText("Expiration date:");
-        gridBagConstraints = new GridBagConstraints();
-        gridBagConstraints.gridx = 0;
-        gridBagConstraints.gridy = 1;
-        gridBagConstraints.anchor = 22;
-        gridBagConstraints.insets = new Insets(2, 4, 2, 4);
-        this.statusPropsTable.add(this.expirationTitleLabel, gridBagConstraints);
-        this.expirationContentField.setEditable(false);
-        this.expirationContentField.setBackground((Color)null);
-        this.expirationContentField.setBorder((Border)null);
-        this.expirationContentField.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent evt) {
-                AstmSettingsPanel.this.expirationContentFieldActionPerformed(evt);
-            }
-        });
-        gridBagConstraints = new GridBagConstraints();
-        gridBagConstraints.gridx = 1;
-        gridBagConstraints.gridy = 1;
-        gridBagConstraints.anchor = 21;
-        gridBagConstraints.insets = new Insets(2, 4, 2, 4);
-        this.statusPropsTable.add(this.expirationContentField, gridBagConstraints);
-        this.statusCardPanel.add(this.statusPropsTable, "props");
-        this.noLicenseLabel.setText("No license provided yet!");
-        this.statusCardPanel.add(this.noLicenseLabel, "noLicense");
-        this.marginStatusPanel.add(this.statusCardPanel);
-        this.statusPanel.add(this.marginStatusPanel, "Center");
-        this.sectionsjPanel.add(this.statusPanel);
-        this.sectionsjPanel.add(this.filler1);
-        this.systemInfoPanel.setBackground(UIConstants.BACKGROUND_COLOR);
-        this.systemInfoPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(204, 204, 204)), "System info", 0, 0, new Font("Tahoma", 1, 11)));
-        this.systemInfoPanel.setLayout(new BorderLayout());
-        this.marginSystemInfoPanel.setBackground(UIConstants.BACKGROUND_COLOR);
-        this.marginSystemInfoPanel.setLayout(new FlowLayout(0, 12, 0));
-        this.sytemInfoPropsTable.setBackground(UIConstants.BACKGROUND_COLOR);
-        GridBagLayout sytemInfoPropsTableLayout = new GridBagLayout();
-        sytemInfoPropsTableLayout.columnWeights = new double[]{0.5, 0.5};
-        sytemInfoPropsTableLayout.rowWeights = new double[]{0.5, 0.5};
-        this.sytemInfoPropsTable.setLayout(sytemInfoPropsTableLayout);
-        this.uuidTitleLabel.setHorizontalAlignment(0);
-        this.uuidTitleLabel.setText("UUID:");
-        gridBagConstraints = new GridBagConstraints();
-        gridBagConstraints.gridx = 0;
-        gridBagConstraints.gridy = 0;
-        gridBagConstraints.anchor = 22;
-        gridBagConstraints.insets = new Insets(2, 4, 2, 4);
-        this.sytemInfoPropsTable.add(this.uuidTitleLabel, gridBagConstraints);
-        this.uuidContentField.setEditable(false);
-        this.uuidContentField.setBackground((Color)null);
-        this.uuidContentField.setBorder((Border)null);
-        this.uuidContentField.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent evt) {
-                AstmSettingsPanel.this.uuidContentFieldActionPerformed(evt);
-            }
-        });
-        gridBagConstraints = new GridBagConstraints();
-        gridBagConstraints.gridx = 1;
-        gridBagConstraints.gridy = 0;
-        gridBagConstraints.anchor = 21;
-        gridBagConstraints.insets = new Insets(2, 4, 2, 4);
-        this.sytemInfoPropsTable.add(this.uuidContentField, gridBagConstraints);
-        this.uuidCopyButton.setBackground((Color)null);
-        this.uuidCopyButton.setIcon(new ImageIcon(this.getClass().getResource("/com/bitdreamit/connect/astm/images/copy-icon.png")));
-        this.uuidCopyButton.setBorderPainted(false);
-        this.uuidCopyButton.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent evt) {
-                AstmSettingsPanel.this.uuidCopyButtonActionPerformed(evt);
-            }
-        });
-        gridBagConstraints = new GridBagConstraints();
-        gridBagConstraints.gridx = 2;
-        gridBagConstraints.gridy = 0;
-        this.sytemInfoPropsTable.add(this.uuidCopyButton, gridBagConstraints);
-        this.marginSystemInfoPanel.add(this.sytemInfoPropsTable);
-        this.systemInfoPanel.add(this.marginSystemInfoPanel, "Center");
-        this.sectionsjPanel.add(this.systemInfoPanel);
-        this.settingsPanel.setBackground(UIConstants.BACKGROUND_COLOR);
-        this.settingsPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(204, 204, 204)), "Log level", 0, 0, new Font("Tahoma", 1, 11)));
-        this.settingsPanel.setLayout(new BoxLayout(this.settingsPanel, 1));
-        this.marginSettingsPanel.setBackground(UIConstants.BACKGROUND_COLOR);
-        this.marginSettingsPanel.setLayout(new FlowLayout(0, 12, 0));
-        this.loggerPanel.setBackground(UIConstants.BACKGROUND_COLOR);
-        GridBagLayout loggerPanelLayout = new GridBagLayout();
-        loggerPanelLayout.columnWidths = new int[]{0, 5, 0};
-        loggerPanelLayout.rowHeights = new int[]{0, 5, 0};
-        this.loggerPanel.setLayout(loggerPanelLayout);
-        this.extensionJlabel.setText("Extension:");
-        gridBagConstraints = new GridBagConstraints();
-        gridBagConstraints.gridx = 0;
-        gridBagConstraints.gridy = 0;
-        gridBagConstraints.anchor = 22;
-        this.loggerPanel.add(this.extensionJlabel, gridBagConstraints);
-        this.logLevelExtensionComboBox.setModel(new DefaultComboBoxModel(new String[]{"OFF", "FATAL", "ERROR", "WARN", "INFO", "DEBUG", "TRACE", "ALL"}));
-        this.logLevelExtensionComboBox.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent evt) {
-                AstmSettingsPanel.this.logLevelExtensionComboBoxActionPerformed(evt);
-            }
-        });
-        gridBagConstraints = new GridBagConstraints();
-        gridBagConstraints.gridx = 2;
-        gridBagConstraints.gridy = 0;
-        this.loggerPanel.add(this.logLevelExtensionComboBox, gridBagConstraints);
-        this.driverJlabel.setText("Driver:");
-        gridBagConstraints = new GridBagConstraints();
-        gridBagConstraints.gridx = 0;
-        gridBagConstraints.gridy = 2;
-        gridBagConstraints.anchor = 22;
-        this.loggerPanel.add(this.driverJlabel, gridBagConstraints);
-        this.logLevelDriverComboBox.setModel(new DefaultComboBoxModel(new String[]{"OFF", "FATAL", "ERROR", "WARN", "INFO", "DEBUG", "TRACE", "ALL"}));
-        gridBagConstraints = new GridBagConstraints();
-        gridBagConstraints.gridx = 2;
-        gridBagConstraints.gridy = 2;
-        this.loggerPanel.add(this.logLevelDriverComboBox, gridBagConstraints);
-        this.marginSettingsPanel.add(this.loggerPanel);
-        this.settingsPanel.add(this.marginSettingsPanel);
-        this.sectionsjPanel.add(this.settingsPanel);
-        this.sectionsjPanel.add(this.filler2);
-        this.logoPanel.setBackground(UIConstants.BACKGROUND_COLOR);
-        this.logoPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(204, 204, 204)), "Developed by", 0, 0, new Font("Tahoma", 1, 11)));
-        this.logoPanel.setLayout(new BoxLayout(this.logoPanel, 1));
-        this.marginSettingsPanel1.setBackground(UIConstants.BACKGROUND_COLOR);
-        this.marginSettingsPanel1.setBorder(BorderFactory.createEmptyBorder(24, 0, 0, 0));
-        this.marginSettingsPanel1.setToolTipText("");
-        this.marginSettingsPanel1.setLayout(new FlowLayout(0, 12, 0));
-        this.logo.setIcon(new ImageIcon(this.getClass().getResource("/com/bitdreamit/connect/astm/images/bdit.png")));
-        this.logo.setToolTipText("<html>Meditecs - <i>Smarter integrations. Better patient care.</i>");
-        this.logo.setCursor(new Cursor(12));
-        this.logo.addMouseListener(new MouseAdapter() {
-            public void mouseClicked(MouseEvent evt) {
-                AstmSettingsPanel.this.logoMouseClicked(evt);
-            }
-        });
-        this.marginSettingsPanel1.add(this.logo);
-        this.logoPanel.add(this.marginSettingsPanel1);
-        this.sectionsjPanel.add(this.logoPanel);
-        this.marginPanel.add(this.sectionsjPanel, "North");
-        this.add(this.marginPanel, "Center");
+        setBackground(Color.WHITE);
+        setLayout(new MigLayout("insets 12, fillx, gap 8", "[grow]", ""));
+
+        // ========== HEADER / BRANDING ==========
+        JPanel headerPanel = new JPanel(new MigLayout("insets 16, gap 8", "[][grow]", ""));
+        headerPanel.setBackground(BRAND_BLUE);
+        headerPanel.setBorder(new EmptyBorder(12, 16, 12, 16));
+
+        JLabel lblLogo = new JLabel("\u2695"); // Medical symbol
+        lblLogo.setFont(new Font("Segoe UI", Font.BOLD, 36));
+        lblLogo.setForeground(Color.WHITE);
+
+        JLabel lblTitle = new JLabel("<html><b style=\"font-size:18px;\">Bit Dream IT</b><br/><span style=\"font-size:13px;\">ASTM Extension for Mirth Connect / BridgeLink</span></html>");
+        lblTitle.setForeground(Color.WHITE);
+
+        JLabel lblVer = new JLabel("v2.4.2");
+        lblVer.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        lblVer.setForeground(new Color(0xCC, 0xDD, 0xFF));
+
+        headerPanel.add(lblLogo, "cell 0 0, spany 2, aligny top");
+        headerPanel.add(lblTitle, "cell 1 0");
+        headerPanel.add(lblVer, "cell 1 1, gaptop 4");
+        add(headerPanel, "growx, wrap");
+
+        // ========== HOW IT WORKS ==========
+        add(createSection("How It Works",
+                "<html>"
+                        + "<p style=\"margin-bottom:8px;\">"
+                        + "This extension adds <b>ASTM Listener</b> (Source) and <b>ASTM Sender</b> (Destination) connectors to Mirth Connect. "
+                        + "Each channel configures its own transport mode independently — choose <b>TCP Client</b>, <b>TCP Server</b>, or <b>Serial (RS-232)</b> directly in the channel connector settings.</p>"
+                        + "<p style=\"margin-bottom:8px;\">"
+                        + "<b>Combined Use:</b> The Listener and Sender can share the same ASTM connection to communicate bidirectionally with the device.</p>"
+                        + "<p>Configure transport parameters (host, port, serial port, baud rate, etc.) inside each channel. This global panel shows extension info only.</p>"
+                        + "</html>"), "growx, wrap");
+
+        // ========== DIALECT GUIDE ==========
+        add(createSection("Dialect Selection Guide",
+                "<html>"
+                        + "<table cellspacing=\"6\" cellpadding=\"0\">"
+                        + "<tr><td><b>ELECSYS</b></td><td>—</td><td>Roche / Elecsys analysers. Uses standard ASTM E1381 with ENQ/ACK handshake and checksum.</td></tr>"
+                        + "<tr><td><b>COBAS</b></td><td>—</td><td>Roche / Cobas series. Similar to ELECSYS with slight frame timing differences.</td></tr>"
+                        + "<tr><td><b>GENERIC</b></td><td>—</td><td>Non-Roche devices or custom implementations. Most compatible fallback option.</td></tr>"
+                        + "</table>"
+                        + "<p style=\"margin-top:8px;\"><i>Tip: If your device is Snibe, Mindray, or Erba — start with GENERIC, then switch to ELECSYS or COBAS if the device manual specifies it.</i></p>"
+                        + "</html>"), "growx, wrap");
+
+        // ========== FEATURES ==========
+        add(createSection("Features & Capabilities",
+                "<html><ul style=\"margin-left:16px;\">"
+                        + "<li><b>New ASTM Connectors:</b> ASTM Listener (Source) and ASTM Sender (Destination)</li>"
+                        + "<li><b>Graphical Configuration:</b> Clear per-channel GUI for TCP Client / TCP Server / Serial setup</li>"
+                        + "<li><b>Template Support:</b> Outgoing message templates for Destination connectors</li>"
+                        + "<li><b>High Performance:</b> Asynchronous message reception and dispatching</li>"
+                        + "<li><b>Special Character Encoding:</b> CP-1252 (Windows-1252) and UTF-8 support</li>"
+                        + "<li><b>Versatile TCP:</b> Operate as client or server; multiple connections on same port</li>"
+                        + "<li><b>Serial Communication:</b> Native RS-232 via jSerialComm (COM ports, /dev/ttyUSB, etc.)</li>"
+                        + "<li><b>Protocol Handling:</b> ASTM E1381-91, E1381-95, E1381-02 compliant framing</li>"
+                        + "<li><b>Memory Efficient:</b> Optimized for minimal memory consumption</li>"
+                        + "<li><b>Robust Error Management:</b> Error detection and reporting for incoming messages</li>"
+                        + "</ul></html>"), "growx, wrap");
+
+        // ========== SERIAL NOTE ==========
+        JPanel serialNote = new JPanel(new MigLayout("insets 10, gap 8", "[][grow]", ""));
+        serialNote.setBackground(new Color(0xFF, 0xFB, 0xE6));
+        serialNote.setBorder(new CompoundBorder(
+                new LineBorder(new Color(0xF0, 0xC0, 0x40), 1),
+                new EmptyBorder(8, 12, 8, 12)
+        ));
+        JLabel lblIcon = new JLabel("\u26A0"); // Warning symbol
+        lblIcon.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        lblIcon.setForeground(new Color(0xC0, 0x80, 0x10));
+        JLabel lblSerial = new JLabel("<html><b>Serial Mode Note</b><br/>"
+                + "When using RS-232, ensure the <b>jSerialComm</b> library (lib/jSerialComm-2.10.4.jar) is present in the plugin lib folder. "
+                + "Set the correct COM port (Windows) or /dev/tty device (Linux) in the channel connector settings.</html>");
+        serialNote.add(lblIcon, "aligny top");
+        serialNote.add(lblSerial, "growx");
+        add(serialNote, "growx, wrap");
+
+        // ========== FOOTER ==========
+        JLabel lblFooter = new JLabel("\u00A9 2026 Bit Dream IT  —  https://www.bitdreamit.com");
+        lblFooter.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        lblFooter.setForeground(Color.GRAY);
+        lblFooter.setHorizontalAlignment(SwingConstants.CENTER);
+        add(lblFooter, "growx, gaptop 10");
     }
 
-    private void logoMouseClicked(MouseEvent evt) {
-        try {
-            Desktop.getDesktop().browse(new URI("https://www.meditecs.com/"));
-        } catch (IOException var3) {
-            IOException e = var3;
-            e.printStackTrace();
-        } catch (URISyntaxException var4) {
-            URISyntaxException e = var4;
-            e.printStackTrace();
-        }
+    private JPanel createSection(String title, String htmlContent) {
+        JPanel panel = new JPanel(new MigLayout("insets 12, gap 6, fillx", "[grow]", ""));
+        panel.setBackground(SECTION_BG);
+        panel.setBorder(new CompoundBorder(
+                new LineBorder(new Color(0xDD, 0xDD, 0xDD), 1),
+                new EmptyBorder(8, 12, 8, 12)
+        ));
 
+        JLabel lblTitle = new JLabel(title);
+        lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        lblTitle.setForeground(BRAND_BLUE);
+        panel.add(lblTitle, "wrap, gapbottom 6");
+
+        JLabel lblContent = new JLabel(htmlContent);
+        lblContent.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        lblContent.setForeground(new Color(0x33, 0x33, 0x33));
+        panel.add(lblContent, "growx");
+
+        return panel;
     }
 
-    private void uuidCopyButtonActionPerformed(ActionEvent evt) {
-        StringSelection stringSelection = new StringSelection(this.uuidContentField.getText());
-        Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
-        clipboard.setContents(stringSelection, (ClipboardOwner)null);
+    // ===== Required AbstractSettingsPanel methods =====
+    public ConnectorProperties getProperties() {
+        return new AstmProperties() {
+            @Override public void migrate3_0_1(DonkeyElement e) {}
+            @Override public void migrate3_0_2(DonkeyElement e) {}
+            @Override public void migrate4_4_0(DonkeyElement e) { super.migrate4_4_0(e); }
+            @Override public void migrate4_5_0(DonkeyElement e) { super.migrate4_5_0(e); }
+        };
     }
 
-    private void logLevelExtensionComboBoxActionPerformed(ActionEvent evt) {
-    }
-
-    private void uuidContentFieldActionPerformed(ActionEvent evt) {
-    }
-
-    private void validityContentFieldActionPerformed(ActionEvent evt) {
-    }
-
-    private void expirationContentFieldActionPerformed(ActionEvent evt) {
-    }
+    public void setProperties(ConnectorProperties properties) {}
+    public ConnectorProperties getDefaults() { return getProperties(); }
+    public boolean checkProperties(ConnectorProperties properties, boolean highlight) { return true; }
+    public void resetInvalidProperties() {}
+    public void doRefresh() {}
+    public boolean doSave() { return false; }
 }

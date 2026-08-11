@@ -1,118 +1,267 @@
 package com.bitdreamit.connect.astm;
 
-import com.mirth.connect.client.ui.Frame;
-import com.mirth.connect.client.ui.PlatformUI;
-import com.mirth.connect.client.ui.UIConstants;
-import com.mirth.connect.client.ui.components.MirthSyntaxTextArea;
-import com.mirth.connect.client.ui.components.MirthTextField;
 import com.mirth.connect.client.ui.panels.connectors.ConnectorSettingsPanel;
 import com.mirth.connect.donkey.model.channel.ConnectorProperties;
-import java.awt.Color;
-import java.awt.Cursor;
-import java.awt.Dimension;
-import javax.swing.BorderFactory;
-import javax.swing.BoxLayout;
-import javax.swing.GroupLayout;
-import javax.swing.JLabel;
-import javax.swing.JPanel;
-import javax.swing.GroupLayout.Alignment;
-import javax.swing.LayoutStyle.ComponentPlacement;
-import javax.swing.border.Border;
+import net.miginfocom.swing.MigLayout;
 
-public class AstmSender extends ConnectorSettingsPanel {
-    private Frame parent;
-    private AstmConnectorPanel astmConnectorPanel;
-    private MirthTextField sendTimeoutField;
-    private JLabel sendTimeoutLabel;
-    private JPanel senderPanel;
-    private JLabel templateLabel;
-    private MirthSyntaxTextArea templateTextArea;
+import javax.swing.*;
+import javax.swing.border.TitledBorder;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+
+public class AstmSender extends ConnectorSettingsPanel implements ActionListener {
+
+    private JComboBox<String> modeBox;
+
+    private JPanel tcpPanel;
+    private JTextField hostField;
+    private JTextField portField;
+    private JCheckBox serverModeBox;
+    private JTextField connTimeoutField;
+
+    private JPanel serialPanel;
+    private JComboBox<String> serialPortBox;
+    private JButton refreshPortsBtn;
+    private JComboBox<String> baudBox;
+    private JComboBox<String> dataBitsBox;
+    private JComboBox<String> stopBitsBox;
+    private JComboBox<String> parityBox;
+    private JComboBox<String> flowBox;
+    private JComboBox<String> charsetBox;
+    private JTextField readTimeoutField;
+    private JTextField writeTimeoutField;
+
+    private JPanel protocolPanel;
+    private JComboBox<String> protocolBox;
+    private JCheckBox enqAckBox;
+    private JCheckBox checksumBox;
+    private JTextField maxRetriesField;
+    private JTextField frameSizeField;
+    private JTextField interFrameDelayField;
+
+    private JPanel templatePanel;
+    private JTextArea templateArea;
+    private JTextField sendTimeoutField;
 
     public AstmSender() {
-        this.parent = PlatformUI.MIRTH_FRAME;
-        this.initComponents();
-    }
-
-    public ConnectorProperties getProperties() {
-        AstmDispatcherProperties properties = new AstmDispatcherProperties();
-        properties.setTemplate(this.templateTextArea.getText());
-        properties.setSendTimeout(this.sendTimeoutField.getText());
-        return this.astmConnectorPanel.getProperties(properties);
-    }
-
-    public void setProperties(ConnectorProperties properties) {
-        AstmDispatcherProperties props = (AstmDispatcherProperties)properties;
-        this.astmConnectorPanel.setProperties(properties);
-        this.templateTextArea.setText(props.getTemplate());
-        this.sendTimeoutField.setText(props.getSendTimeout());
-    }
-
-    public ConnectorProperties getDefaults() {
-        return new AstmDispatcherProperties();
-    }
-
-    public boolean checkProperties(ConnectorProperties properties, boolean highlight) {
-        AstmDispatcherProperties props = (AstmDispatcherProperties)properties;
-        boolean valid = true;
-        if (valid) {
-            valid = this.astmConnectorPanel.checkProperties(properties, highlight);
-        }
-
-        if (props.getTemplate().length() == 0) {
-            valid = false;
-            if (highlight) {
-                this.templateTextArea.setBackground(UIConstants.INVALID_COLOR);
-            }
-        }
-
-        return valid;
-    }
-
-    public void resetInvalidProperties() {
-        this.templateTextArea.setBackground((Color)null);
-    }
-
-    public String getConnectorName() {
-        return (new AstmDispatcherProperties()).getName();
+        initComponents();
+        refreshPortList();
+        updateVisibility();
     }
 
     private void initComponents() {
-        this.astmConnectorPanel = new AstmConnectorPanel();
-        this.senderPanel = new JPanel();
-        this.sendTimeoutLabel = new JLabel();
-        this.sendTimeoutField = new MirthTextField();
-        this.templateLabel = new JLabel();
-        this.templateTextArea = new MirthSyntaxTextArea();
-        this.setBackground(new Color(255, 255, 255));
-        this.setLayout(new BoxLayout(this, 3));
-        this.astmConnectorPanel.setBorder((Border)null);
-        this.astmConnectorPanel.setAlignmentX(0.0F);
-        this.astmConnectorPanel.setMaximumSize((Dimension)null);
-        this.astmConnectorPanel.setMinimumSize((Dimension)null);
-        this.astmConnectorPanel.setPreferredSize((Dimension)null);
-        this.add(this.astmConnectorPanel);
-        this.senderPanel.setBackground(Color.white);
-        this.senderPanel.setAlignmentX(0.0F);
-        this.senderPanel.setAutoscrolls(true);
-        this.senderPanel.setCursor(new Cursor(0));
-        this.senderPanel.setMaximumSize((Dimension)null);
-        this.sendTimeoutLabel.setText("Send Timeout (ms):");
-        this.sendTimeoutField.setToolTipText("<html>Sets the message send timeout in milliseconds.<br>If the message is already consumed by the driver, the timeout will be ignored.<br>A timeout value of zero is interpreted as an infinite timeout.</html>");
-        this.templateLabel.setText("Template:");
-        this.templateLabel.setAlignmentX(0.0F);
-        this.templateTextArea.setBorder(BorderFactory.createEtchedBorder());
-        this.templateTextArea.setAlignmentX(0.0F);
-        this.templateTextArea.setMaximumSize((Dimension)null);
-        this.templateTextArea.setMinimumSize(new Dimension(500, 100));
-        this.templateTextArea.setName("");
-        this.templateTextArea.setPreferredSize(new Dimension(500, 100));
-        GroupLayout senderPanelLayout = new GroupLayout(this.senderPanel);
-        this.senderPanel.setLayout(senderPanelLayout);
-        senderPanelLayout.setHorizontalGroup(senderPanelLayout.createParallelGroup(Alignment.LEADING).addGroup(senderPanelLayout.createSequentialGroup().addContainerGap().addGroup(senderPanelLayout.createParallelGroup(Alignment.TRAILING).addComponent(this.templateLabel).addComponent(this.sendTimeoutLabel)).addPreferredGap(ComponentPlacement.RELATED).addGroup(senderPanelLayout.createParallelGroup(Alignment.LEADING).addComponent(this.templateTextArea, -1, -1, 32767).addGroup(senderPanelLayout.createSequentialGroup().addComponent(this.sendTimeoutField, -2, 75, -2).addGap(0, 0, 0))).addContainerGap()));
-        senderPanelLayout.setVerticalGroup(senderPanelLayout.createParallelGroup(Alignment.LEADING).addGroup(senderPanelLayout.createSequentialGroup().addContainerGap().addGroup(senderPanelLayout.createParallelGroup(Alignment.BASELINE).addComponent(this.sendTimeoutLabel).addComponent(this.sendTimeoutField, -2, -1, -2)).addPreferredGap(ComponentPlacement.UNRELATED).addGroup(senderPanelLayout.createParallelGroup(Alignment.LEADING).addComponent(this.templateTextArea, -1, -1, 32767).addComponent(this.templateLabel)).addContainerGap()));
-        this.sendTimeoutField.getAccessibleContext().setAccessibleDescription("<html>Sets the message send timeout in milliseconds.<br>If the message is already consumed by the driver, the timeout will be ignored.<br>A timeout value of zero is interpreted as an infinite timeout.</html>");
-        this.add(this.senderPanel);
-        this.senderPanel.getAccessibleContext().setAccessibleName("");
-        this.senderPanel.getAccessibleContext().setAccessibleDescription("");
+        setBackground(Color.WHITE);
+        setLayout(new MigLayout("insets 8, novisualpadding, hidemode 3, fillx, gap 4", "[][grow]", ""));
+
+        add(new JLabel("Transport Mode:"), "right");
+        modeBox = new JComboBox<>(new String[]{"TCP Client", "TCP Server", "Serial (RS-232)"});
+        modeBox.addActionListener(this);
+        add(modeBox, "w 200!, wrap");
+
+        tcpPanel = new JPanel(new MigLayout("insets 8, gap 4", "[][grow]", ""));
+        tcpPanel.setBackground(Color.WHITE);
+        tcpPanel.setBorder(new TitledBorder("TCP Settings"));
+        hostField = new JTextField();
+        portField = new JTextField();
+        serverModeBox = new JCheckBox("Server Mode (Listen)");
+        serverModeBox.setBackground(Color.WHITE);
+        connTimeoutField = new JTextField();
+        tcpPanel.add(new JLabel("Host:"), "right");
+        tcpPanel.add(hostField, "w 200!, wrap");
+        tcpPanel.add(new JLabel("Port:"), "right");
+        tcpPanel.add(portField, "w 100!, wrap");
+        tcpPanel.add(serverModeBox, "span 2, wrap");
+        tcpPanel.add(new JLabel("Conn Timeout (ms):"), "right");
+        tcpPanel.add(connTimeoutField, "w 100!, wrap");
+        add(tcpPanel, "span, growx, wrap");
+
+        serialPanel = new JPanel(new MigLayout("insets 8, gap 4", "[][grow]", ""));
+        serialPanel.setBackground(Color.WHITE);
+        serialPanel.setBorder(new TitledBorder("Serial Settings"));
+        serialPortBox = new JComboBox<>();
+        serialPortBox.setEditable(true);
+        refreshPortsBtn = new JButton("Refresh");
+        refreshPortsBtn.addActionListener(this);
+        baudBox = new JComboBox<>(new String[]{"9600", "19200", "38400", "57600", "115200"});
+        dataBitsBox = new JComboBox<>(new String[]{"5", "6", "7", "8"});
+        stopBitsBox = new JComboBox<>(new String[]{"1", "1.5", "2"});
+        parityBox = new JComboBox<>(new String[]{"None", "Odd", "Even", "Mark", "Space"});
+        flowBox = new JComboBox<>(new String[]{"None", "RTS/CTS", "XON/XOFF", "DSR/DTR"});
+        charsetBox = new JComboBox<>(new String[]{"UTF-8", "ISO-8859-1", "US-ASCII", "windows-1252"});
+        readTimeoutField = new JTextField();
+        writeTimeoutField = new JTextField();
+        serialPanel.add(new JLabel("Port:"), "right");
+        serialPanel.add(serialPortBox, "split 2, w 180!");
+        serialPanel.add(refreshPortsBtn, "w 80!, wrap");
+        serialPanel.add(new JLabel("Baud:"), "right");
+        serialPanel.add(baudBox, "w 120!, wrap");
+        serialPanel.add(new JLabel("Data Bits:"), "right");
+        serialPanel.add(dataBitsBox, "w 80!, wrap");
+        serialPanel.add(new JLabel("Stop Bits:"), "right");
+        serialPanel.add(stopBitsBox, "w 80!, wrap");
+        serialPanel.add(new JLabel("Parity:"), "right");
+        serialPanel.add(parityBox, "w 100!, wrap");
+        serialPanel.add(new JLabel("Flow Ctrl:"), "right");
+        serialPanel.add(flowBox, "w 120!, wrap");
+        serialPanel.add(new JLabel("Charset:"), "right");
+        serialPanel.add(charsetBox, "w 120!, wrap");
+        serialPanel.add(new JLabel("Read T/O (ms):"), "right");
+        serialPanel.add(readTimeoutField, "w 100!, wrap");
+        serialPanel.add(new JLabel("Write T/O (ms):"), "right");
+        serialPanel.add(writeTimeoutField, "w 100!, wrap");
+        add(serialPanel, "span, growx, wrap");
+
+        protocolPanel = new JPanel(new MigLayout("insets 8, gap 4", "[][grow]", ""));
+        protocolPanel.setBackground(Color.WHITE);
+        protocolPanel.setBorder(new TitledBorder("ASTM Protocol"));
+        protocolBox = new JComboBox<>(new String[]{"ELECSYS", "COBAS", "GENERIC"});
+        enqAckBox = new JCheckBox("Use ENQ/ACK Handshake");
+        enqAckBox.setSelected(true);
+        enqAckBox.setBackground(Color.WHITE);
+        checksumBox = new JCheckBox("Use Checksum Validation");
+        checksumBox.setSelected(true);
+        checksumBox.setBackground(Color.WHITE);
+        maxRetriesField = new JTextField();
+        frameSizeField = new JTextField();
+        interFrameDelayField = new JTextField();
+        protocolPanel.add(new JLabel("Dialect:"), "right");
+        protocolPanel.add(protocolBox, "w 150!, wrap");
+        protocolPanel.add(enqAckBox, "span 2, wrap");
+        protocolPanel.add(checksumBox, "span 2, wrap");
+        protocolPanel.add(new JLabel("Max Retries:"), "right");
+        protocolPanel.add(maxRetriesField, "w 100!, wrap");
+        protocolPanel.add(new JLabel("Frame Size:"), "right");
+        protocolPanel.add(frameSizeField, "w 100!, wrap");
+        protocolPanel.add(new JLabel("Inter-frame (ms):"), "right");
+        protocolPanel.add(interFrameDelayField, "w 100!, wrap");
+        add(protocolPanel, "span, growx, wrap");
+
+        templatePanel = new JPanel(new MigLayout("insets 8, gap 4", "[][grow]", ""));
+        templatePanel.setBackground(Color.WHITE);
+        templatePanel.setBorder(new TitledBorder("Message Template"));
+        templateArea = new JTextArea(5, 40);
+        templateArea.setLineWrap(true);
+        sendTimeoutField = new JTextField();
+        templatePanel.add(new JLabel("Template:"), "right, top");
+        templatePanel.add(new JScrollPane(templateArea), "growx, wrap");
+        templatePanel.add(new JLabel("Send Timeout (ms):"), "right");
+        templatePanel.add(sendTimeoutField, "w 100!, wrap");
+        add(templatePanel, "span, growx, wrap");
     }
+
+    private void refreshPortList() {
+        serialPortBox.removeAllItems();
+        serialPortBox.addItem("");
+        String[] ports = {"COM1","COM2","COM3","COM4","COM5","COM6",
+                "/dev/ttyS0","/dev/ttyS1","/dev/ttyUSB0","/dev/ttyUSB1","/dev/ttyACM0"};
+        for (String p : ports) serialPortBox.addItem(p);
+    }
+
+    private void updateVisibility() {
+        int mode = modeBox.getSelectedIndex();
+        tcpPanel.setVisible(mode == 0 || mode == 1);
+        serialPanel.setVisible(mode == 2);
+        revalidate(); repaint();
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        if (e.getSource() == modeBox) updateVisibility();
+        else if (e.getSource() == refreshPortsBtn) refreshPortList();
+    }
+
+    private void readFromUI(AstmProperties p) {
+        int mode = modeBox.getSelectedIndex();
+        p.setTransportMode(mode == 0 ? AstmProperties.TransportMode.TCP_CLIENT :
+                mode == 1 ? AstmProperties.TransportMode.TCP_SERVER :
+                        AstmProperties.TransportMode.SERIAL);
+        p.setHost(hostField.getText());
+        try { p.setPort(Integer.parseInt(portField.getText())); } catch (Exception ignored) {}
+        p.setServerMode(serverModeBox.isSelected());
+        try { p.setConnectionTimeout(Integer.parseInt(connTimeoutField.getText())); } catch (Exception ignored) {}
+        p.setSerialPort(serialPortBox.getSelectedItem() != null ? serialPortBox.getSelectedItem().toString() : "");
+        try { p.setBaudRate(Integer.parseInt((String) baudBox.getSelectedItem())); } catch (Exception ignored) {}
+        try { p.setDataBits(Integer.parseInt((String) dataBitsBox.getSelectedItem())); } catch (Exception ignored) {}
+        p.setStopBits(stopBitsBox.getSelectedIndex() + 1);
+        p.setParity(parityBox.getSelectedIndex());
+        p.setFlowControl(flowBox.getSelectedIndex());
+        p.setCharsetName((String) charsetBox.getSelectedItem());
+        try { p.setReadTimeout(Integer.parseInt(readTimeoutField.getText())); } catch (Exception ignored) {}
+        try { p.setWriteTimeout(Integer.parseInt(writeTimeoutField.getText())); } catch (Exception ignored) {}
+        p.setAstmProtocol((String) protocolBox.getSelectedItem());
+        p.setUseEnqAck(enqAckBox.isSelected());
+        p.setUseChecksum(checksumBox.isSelected());
+        try { p.setMaxRetries(Integer.parseInt(maxRetriesField.getText())); } catch (Exception ignored) {}
+        try { p.setMaxFrameSize(Integer.parseInt(frameSizeField.getText())); } catch (Exception ignored) {}
+        try { p.setInterFrameDelay(Integer.parseInt(interFrameDelayField.getText())); } catch (Exception ignored) {}
+    }
+
+    private void writeToUI(AstmProperties p) {
+        switch (p.getTransportMode()) {
+            case TCP_CLIENT: modeBox.setSelectedIndex(0); break;
+            case TCP_SERVER: modeBox.setSelectedIndex(1); break;
+            case SERIAL: modeBox.setSelectedIndex(2); break;
+        }
+        hostField.setText(p.getHost());
+        portField.setText(String.valueOf(p.getPort()));
+        serverModeBox.setSelected(p.isServerMode());
+        connTimeoutField.setText(String.valueOf(p.getConnectionTimeout()));
+        serialPortBox.setSelectedItem(p.getSerialPort());
+        baudBox.setSelectedItem(String.valueOf(p.getBaudRate()));
+        dataBitsBox.setSelectedItem(String.valueOf(p.getDataBits()));
+        stopBitsBox.setSelectedIndex(Math.max(0, p.getStopBits() - 1));
+        parityBox.setSelectedIndex(p.getParity());
+        flowBox.setSelectedIndex(p.getFlowControl());
+        charsetBox.setSelectedItem(p.getCharsetName());
+        readTimeoutField.setText(String.valueOf(p.getReadTimeout()));
+        writeTimeoutField.setText(String.valueOf(p.getWriteTimeout()));
+        protocolBox.setSelectedItem(p.getAstmProtocol());
+        enqAckBox.setSelected(p.isUseEnqAck());
+        checksumBox.setSelected(p.isUseChecksum());
+        maxRetriesField.setText(String.valueOf(p.getMaxRetries()));
+        frameSizeField.setText(String.valueOf(p.getMaxFrameSize()));
+        interFrameDelayField.setText(String.valueOf(p.getInterFrameDelay()));
+        updateVisibility();
+    }
+
+    @Override
+    public ConnectorProperties getProperties() {
+        AstmDispatcherProperties p = new AstmDispatcherProperties();
+        readFromUI(p);
+        p.setTemplate(templateArea.getText());
+        p.setSendTimeout(sendTimeoutField.getText());
+        return p;
+    }
+
+    @Override
+    public void setProperties(ConnectorProperties properties) {
+        if (properties instanceof AstmDispatcherProperties) {
+            AstmDispatcherProperties p = (AstmDispatcherProperties) properties;
+            writeToUI(p);
+            templateArea.setText(p.getTemplate());
+            sendTimeoutField.setText(p.getSendTimeout());
+        }
+    }
+
+    @Override
+    public ConnectorProperties getDefaults() {
+        AstmDispatcherProperties p = new AstmDispatcherProperties();
+        p.setTemplate("${message.encodedData}");
+        p.setSendTimeout("20000");
+        return p;
+    }
+
+    @Override
+    public String getConnectorName() {
+        return "ASTM Sender";
+    }
+
+    @Override
+    public boolean checkProperties(ConnectorProperties properties, boolean highlight) {
+        return true;
+    }
+
+    @Override
+    public void resetInvalidProperties() {}
 }
