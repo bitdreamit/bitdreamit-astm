@@ -1,10 +1,10 @@
 <connectorMetaData path="bitdreamit-astm">
 	<name>ASTM Listener</name>
 	<author>Bit Dream IT</author>
-	<pluginVersion>2.4.2</pluginVersion>
-	<mirthVersion>3.8.0,3.8.1,3.9.0,3.9.1,3.10.0,3.10.1,3.11.0,3.12.0,4.0.0,4.0.1,4.1.0,4.1.1,4.2.0,4.3.0,4.4.0,4.4.1,4.4.2,4.5.0,4.5.1,4.5.2,4.6.0,4.6.1,4.6.2,4.7.0,4.7.1,4.7.2</mirthVersion>
+	<pluginVersion>3.0.2</pluginVersion>
+	<mirthVersion>3.8.0,3.8.1,3.9.0,3.9.1,3.10.0,3.10.1,3.11.0,3.12.0,4.0.0,4.0.1,4.1.0,4.1.1,4.2.0,4.3.0,4.4.0,4.4.1,4.4.2,4.5.0,4.5.1,4.5.2,4.5.3,4.5.4,4.6.0,4.6.1,4.6.2,4.7.0,4.7.1,4.7.2,26.3.0,26.3.1,26.6.0</mirthVersion>
 	<url>https://www.bitdreamit.com</url>
-	<description>This connector allows Mirth Connect to listen for incoming ASTM messages over TCP protocol.</description>
+	<description>This connector allows Mirth Connect to listen for incoming ASTM messages over TCP or Serial (RS-232) protocol.</description>
 	<clientClassName>com.bitdreamit.connect.astm.AstmListener</clientClassName>
 	<serverClassName>com.bitdreamit.connect.astm.AstmReceiver</serverClassName>
 	<sharedClassName>com.bitdreamit.connect.astm.AstmReceiverProperties</sharedClassName>
@@ -12,6 +12,7 @@
 	<library type="SHARED" path="astm-shared.jar" />
 	<library type="SERVER" path="astm-server.jar" />
 	<library type="SERVER" path="lib/AsyncAstm-3.2.jar" />
+	<library type="SERVER" path="lib/jSerialComm-2.10.4.jar" />
 	<transformers></transformers>
 	<protocol>astm</protocol>
 	<type>SOURCE</type>
