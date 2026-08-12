@@ -50,6 +50,11 @@ public class AstmSender extends ConnectorSettingsPanel implements ActionListener
         updateVisibility();
     }
 
+    @Override
+    public String getConnectorName() {
+        return "ASTM Sender";
+    }
+
     private void initComponents() {
         setBackground(Color.WHITE);
         setLayout(new MigLayout("insets 8, novisualpadding, hidemode 3, fillx, gap 4", "[][grow]", ""));
@@ -150,12 +155,33 @@ public class AstmSender extends ConnectorSettingsPanel implements ActionListener
         add(templatePanel, "span, growx, wrap");
     }
 
+    /**
+     * IMPROVED: Uses reflection to dynamically enumerate serial ports via jSerialComm if available.
+     * Falls back to a hardcoded list if jSerialComm is not on the client classpath.
+     */
     private void refreshPortList() {
         serialPortBox.removeAllItems();
         serialPortBox.addItem("");
-        String[] ports = {"COM1","COM2","COM3","COM4","COM5","COM6",
-                "/dev/ttyS0","/dev/ttyS1","/dev/ttyUSB0","/dev/ttyUSB1","/dev/ttyACM0"};
-        for (String p : ports) serialPortBox.addItem(p);
+
+        boolean dynamicSuccess = false;
+        try {
+            Class<?> serialPortClass = Class.forName("com.fazecast.jSerialComm.SerialPort");
+            Object[] ports = (Object[]) serialPortClass.getMethod("getCommPorts").invoke(null);
+            for (Object port : ports) {
+                String name = (String) port.getClass().getMethod("getSystemPortName").invoke(port);
+                String desc = (String) port.getClass().getMethod("getDescriptivePortName").invoke(port);
+                serialPortBox.addItem(name + " - " + desc);
+            }
+            dynamicSuccess = ports.length > 0;
+        } catch (Throwable t) {
+            // jSerialComm not available on client classpath
+        }
+
+        if (!dynamicSuccess) {
+            String[] defaults = {"COM1","COM2","COM3","COM4","COM5","COM6","COM7","COM8",
+                    "/dev/ttyS0","/dev/ttyS1","/dev/ttyUSB0","/dev/ttyUSB1","/dev/ttyACM0"};
+            for (String p : defaults) serialPortBox.addItem(p);
+        }
     }
 
     private void updateVisibility() {
@@ -180,7 +206,9 @@ public class AstmSender extends ConnectorSettingsPanel implements ActionListener
         try { p.setPort(Integer.parseInt(portField.getText())); } catch (Exception ignored) {}
         p.setServerMode(serverModeBox.isSelected());
         try { p.setConnectionTimeout(Integer.parseInt(connTimeoutField.getText())); } catch (Exception ignored) {}
-        p.setSerialPort(serialPortBox.getSelectedItem() != null ? serialPortBox.getSelectedItem().toString() : "");
+        String portItem = serialPortBox.getSelectedItem() != null ? serialPortBox.getSelectedItem().toString() : "";
+        if (portItem.contains(" - ")) portItem = portItem.substring(0, portItem.indexOf(" - "));
+        p.setSerialPort(portItem);
         try { p.setBaudRate(Integer.parseInt((String) baudBox.getSelectedItem())); } catch (Exception ignored) {}
         try { p.setDataBits(Integer.parseInt((String) dataBitsBox.getSelectedItem())); } catch (Exception ignored) {}
         p.setStopBits(stopBitsBox.getSelectedIndex() + 1);
@@ -250,11 +278,6 @@ public class AstmSender extends ConnectorSettingsPanel implements ActionListener
         p.setTemplate("${message.encodedData}");
         p.setSendTimeout("20000");
         return p;
-    }
-
-    @Override
-    public String getConnectorName() {
-        return "ASTM Sender";
     }
 
     @Override

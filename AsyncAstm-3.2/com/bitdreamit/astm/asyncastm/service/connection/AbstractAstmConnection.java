@@ -1,5 +1,6 @@
 package com.bitdreamit.astm.asyncastm.service.connection;
 
+import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.EOFException;
 import java.io.IOException;
@@ -19,6 +20,7 @@ public abstract class AbstractAstmConnection implements Closeable {
 
     private Protocol protocol;
     private String charsetName;
+    private Charset cachedCharset;
     private Semaphore readSemaphore;
     private Semaphore readySemaphore;
     private volatile int lastByte;
@@ -29,6 +31,13 @@ public abstract class AbstractAstmConnection implements Closeable {
     public AbstractAstmConnection(Protocol protocol, String charsetName) {
         this.protocol = protocol;
         this.charsetName = charsetName;
+        try {
+            this.cachedCharset = Charset.forName(this.charsetName);
+        } catch (Exception e) {
+            logger.warn("Charset '" + charsetName + "' not found. Falling back to windows-1252 (CP-1252).");
+            this.cachedCharset = Charset.forName("windows-1252");
+            this.charsetName = "windows-1252";
+        }
     }
 
     public final synchronized void initialize() {
@@ -69,8 +78,7 @@ public abstract class AbstractAstmConnection implements Closeable {
     public final void sendFrame(String text) throws IOException, InterruptedException {
         String framed = "\u0002" + text + '\r' + '\n';
         logger.debug("Sending: " + AstmControlChars.format(framed));
-        Charset charset = Charset.forName(this.charsetName);
-        this.getOutputStreamWithReconnect().write(framed.getBytes(charset));
+        this.getOutputStreamWithReconnect().write(framed.getBytes(this.cachedCharset));
     }
 
     private int readByteImpl() throws InterruptedException, EOFException {
@@ -87,7 +95,6 @@ public abstract class AbstractAstmConnection implements Closeable {
         try {
             if (timeoutSeconds == 0) { this.readySemaphore.acquire(); }
             else if (!this.readySemaphore.tryAcquire(timeoutSeconds, TimeUnit.SECONDS)) {
-                // FIX #8: Mark semaphore as held so next call does not issue a redundant release.
                 this.semaphoreHeld = true;
                 throw new TimeoutException("Timeout exceeded in semaphore");
             }
@@ -102,28 +109,37 @@ public abstract class AbstractAstmConnection implements Closeable {
         return this.lastByte;
     }
 
+    /**
+     * Reads a line terminated by CR+LF.
+     * IMPROVED: Accumulates raw bytes in ByteArrayOutputStream and decodes once at the end.
+     * This guarantees integrity for multi-byte encodings (UTF-8) and is equally correct for
+     * single-byte encodings like CP-1252 / windows-1252.
+     */
     public final String readLine() throws InterruptedException, EOFException {
-        StringBuilder sb = new StringBuilder();
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(256);
         boolean done = false;
+
         while (!done) {
             int b = this.readByteImpl();
-            if (b == 13) {
-                b = this.readByteImpl();
-                if (b == 10) { done = true; } else { sb.append('\r'); }
-            }
-            if (!done) {
-                Charset charset = Charset.forName(this.charsetName);
-                sb.append(new String(new byte[]{(byte) b}, charset));
+            if (b == 13) { // CR
+                int next = this.readByteImpl();
+                if (next == 10) { // LF
+                    done = true;
+                } else {
+                    baos.write(13);
+                    baos.write(next);
+                }
+            } else {
+                baos.write(b);
             }
         }
-        return sb.toString();
+        return new String(baos.toByteArray(), this.cachedCharset);
     }
 
     public final int readByteDefaultTimeout(int ignored) throws InterruptedException, TimeoutException, EOFException {
         int b = this.readByte(15); logger.trace(AstmControlChars.name(b) + " received"); return b;
     }
 
-    // NEW: Read with explicit timeout, throws TimeoutException on semaphore timeout
     public final int readByteWithTimeout(int seconds) throws InterruptedException, TimeoutException, EOFException {
         int b = this.readByte(seconds); logger.trace(AstmControlChars.name(b) + " received"); return b;
     }
@@ -150,10 +166,6 @@ public abstract class AbstractAstmConnection implements Closeable {
                     while (true) {
                         AbstractAstmConnection.this.readSemaphore.acquire();
                         boolean success = false;
-                        // Loop internally on SocketTimeoutException so caller gets TimeoutException
-                        // from the semaphore layer instead of EOFException.
-                        // Note: rare race possible if byte arrives after caller timeout but before
-                        // next readSemaphore acquire — the byte may be delivered to next caller.
                         while (!success) {
                             try {
                                 AbstractAstmConnection.this.lastByte = AbstractAstmConnection.this.doGetInputStream().read();
@@ -161,13 +173,12 @@ public abstract class AbstractAstmConnection implements Closeable {
                                 AbstractAstmConnection.this.readySemaphore.release();
                             } catch (SocketTimeoutException e) {
                                 logger.trace("Timeout reached reading ASTM byte");
-                                // Loop again without releasing readySemaphore
                             } catch (IOException e) {
                                 logger.error("IOException reading byte", e);
                                 AbstractAstmConnection.this.lastByte = -1;
                                 success = true;
                                 AbstractAstmConnection.this.readySemaphore.release();
-                                return; // Exit thread on real IOException
+                                return;
                             }
                         }
                     }

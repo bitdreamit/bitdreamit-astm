@@ -2,7 +2,6 @@ package com.bitdreamit.connect.astm;
 
 import com.mirth.connect.client.ui.panels.connectors.ConnectorSettingsPanel;
 import com.mirth.connect.donkey.model.channel.ConnectorProperties;
-import com.mirth.connect.donkey.util.DonkeyElement;
 import net.miginfocom.swing.MigLayout;
 
 import javax.swing.*;
@@ -46,6 +45,11 @@ public class AstmListener extends ConnectorSettingsPanel implements ActionListen
         initComponents();
         refreshPortList();
         updateVisibility();
+    }
+
+    @Override
+    public String getConnectorName() {
+        return "ASTM Listener";
     }
 
     private void initComponents() {
@@ -137,19 +141,42 @@ public class AstmListener extends ConnectorSettingsPanel implements ActionListen
         add(protocolPanel, "span, growx, wrap");
     }
 
+    /**
+     * IMPROVED: Uses reflection to dynamically enumerate serial ports via jSerialComm if available.
+     * Falls back to a hardcoded list if jSerialComm is not on the client classpath.
+     * This prevents NoClassDefFoundError crashes in the Mirth Administrator.
+     */
     private void refreshPortList() {
         serialPortBox.removeAllItems();
         serialPortBox.addItem("");
-        String[] ports = {"COM1","COM2","COM3","COM4","COM5","COM6",
-                "/dev/ttyS0","/dev/ttyS1","/dev/ttyUSB0","/dev/ttyUSB1","/dev/ttyACM0"};
-        for (String p : ports) serialPortBox.addItem(p);
+
+        boolean dynamicSuccess = false;
+        try {
+            Class<?> serialPortClass = Class.forName("com.fazecast.jSerialComm.SerialPort");
+            Object[] ports = (Object[]) serialPortClass.getMethod("getCommPorts").invoke(null);
+            for (Object port : ports) {
+                String name = (String) port.getClass().getMethod("getSystemPortName").invoke(port);
+                String desc = (String) port.getClass().getMethod("getDescriptivePortName").invoke(port);
+                serialPortBox.addItem(name + " - " + desc);
+            }
+            dynamicSuccess = ports.length > 0;
+        } catch (Throwable t) {
+            // jSerialComm not available on client classpath — expected in Mirth Administrator
+        }
+
+        if (!dynamicSuccess) {
+            String[] defaults = {"COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+                    "/dev/ttyS0", "/dev/ttyS1", "/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyACM0"};
+            for (String p : defaults) serialPortBox.addItem(p);
+        }
     }
 
     private void updateVisibility() {
         int mode = modeBox.getSelectedIndex();
         tcpPanel.setVisible(mode == 0 || mode == 1);
         serialPanel.setVisible(mode == 2);
-        revalidate(); repaint();
+        revalidate();
+        repaint();
     }
 
     @Override
@@ -164,31 +191,67 @@ public class AstmListener extends ConnectorSettingsPanel implements ActionListen
                 mode == 1 ? AstmProperties.TransportMode.TCP_SERVER :
                         AstmProperties.TransportMode.SERIAL);
         p.setHost(hostField.getText());
-        try { p.setPort(Integer.parseInt(portField.getText())); } catch (Exception ignored) {}
+        try {
+            p.setPort(Integer.parseInt(portField.getText()));
+        } catch (Exception ignored) {
+        }
         p.setServerMode(serverModeBox.isSelected());
-        try { p.setConnectionTimeout(Integer.parseInt(connTimeoutField.getText())); } catch (Exception ignored) {}
-        p.setSerialPort(serialPortBox.getSelectedItem() != null ? serialPortBox.getSelectedItem().toString() : "");
-        try { p.setBaudRate(Integer.parseInt((String) baudBox.getSelectedItem())); } catch (Exception ignored) {}
-        try { p.setDataBits(Integer.parseInt((String) dataBitsBox.getSelectedItem())); } catch (Exception ignored) {}
+        try {
+            p.setConnectionTimeout(Integer.parseInt(connTimeoutField.getText()));
+        } catch (Exception ignored) {
+        }
+        // Parse port name from "COM1 - Description" format if present
+        String portItem = serialPortBox.getSelectedItem() != null ? serialPortBox.getSelectedItem().toString() : "";
+        if (portItem.contains(" - ")) portItem = portItem.substring(0, portItem.indexOf(" - "));
+        p.setSerialPort(portItem);
+        try {
+            p.setBaudRate(Integer.parseInt((String) baudBox.getSelectedItem()));
+        } catch (Exception ignored) {
+        }
+        try {
+            p.setDataBits(Integer.parseInt((String) dataBitsBox.getSelectedItem()));
+        } catch (Exception ignored) {
+        }
         p.setStopBits(stopBitsBox.getSelectedIndex() + 1);
         p.setParity(parityBox.getSelectedIndex());
         p.setFlowControl(flowBox.getSelectedIndex());
         p.setCharsetName((String) charsetBox.getSelectedItem());
-        try { p.setReadTimeout(Integer.parseInt(readTimeoutField.getText())); } catch (Exception ignored) {}
-        try { p.setWriteTimeout(Integer.parseInt(writeTimeoutField.getText())); } catch (Exception ignored) {}
+        try {
+            p.setReadTimeout(Integer.parseInt(readTimeoutField.getText()));
+        } catch (Exception ignored) {
+        }
+        try {
+            p.setWriteTimeout(Integer.parseInt(writeTimeoutField.getText()));
+        } catch (Exception ignored) {
+        }
         p.setAstmProtocol((String) protocolBox.getSelectedItem());
         p.setUseEnqAck(enqAckBox.isSelected());
         p.setUseChecksum(checksumBox.isSelected());
-        try { p.setMaxRetries(Integer.parseInt(maxRetriesField.getText())); } catch (Exception ignored) {}
-        try { p.setMaxFrameSize(Integer.parseInt(frameSizeField.getText())); } catch (Exception ignored) {}
-        try { p.setInterFrameDelay(Integer.parseInt(interFrameDelayField.getText())); } catch (Exception ignored) {}
+        try {
+            p.setMaxRetries(Integer.parseInt(maxRetriesField.getText()));
+        } catch (Exception ignored) {
+        }
+        try {
+            p.setMaxFrameSize(Integer.parseInt(frameSizeField.getText()));
+        } catch (Exception ignored) {
+        }
+        try {
+            p.setInterFrameDelay(Integer.parseInt(interFrameDelayField.getText()));
+        } catch (Exception ignored) {
+        }
     }
 
     private void writeToUI(AstmProperties p) {
         switch (p.getTransportMode()) {
-            case TCP_CLIENT: modeBox.setSelectedIndex(0); break;
-            case TCP_SERVER: modeBox.setSelectedIndex(1); break;
-            case SERIAL: modeBox.setSelectedIndex(2); break;
+            case TCP_CLIENT:
+                modeBox.setSelectedIndex(0);
+                break;
+            case TCP_SERVER:
+                modeBox.setSelectedIndex(1);
+                break;
+            case SERIAL:
+                modeBox.setSelectedIndex(2);
+                break;
         }
         hostField.setText(p.getHost());
         portField.setText(String.valueOf(p.getPort()));
@@ -232,15 +295,11 @@ public class AstmListener extends ConnectorSettingsPanel implements ActionListen
     }
 
     @Override
-    public String getConnectorName() {
-        return "ASTM Listener";
-    }
-
-    @Override
     public boolean checkProperties(ConnectorProperties properties, boolean highlight) {
         return true;
     }
 
     @Override
-    public void resetInvalidProperties() {}
+    public void resetInvalidProperties() {
+    }
 }

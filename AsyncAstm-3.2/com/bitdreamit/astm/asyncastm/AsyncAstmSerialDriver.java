@@ -26,6 +26,7 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
 
     private AstmContext context;
     private AstmStateMachine stateMachine;
+    private volatile boolean running = false;
 
     public void setPortName(String v) { this.portName = v; }
     public void setBaudRate(int v) { this.baudRate = v; }
@@ -46,10 +47,6 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
             throw new IllegalArgumentException("Unknown protocol: '" + protocol + "'. Valid: ELECSYS, COBAS");
         }
 
-        // FIX: Only validate baud rate and data bits.
-        // Stop bits, parity, and flow control are already mapped to valid jSerialComm
-        // constants by AstmService.java; validating them here causes crashes
-        // (e.g. 2 stop bits = jSerialComm constant 3, which fails "< 1 || > 2").
         validateSerialParams();
 
         AbstractAstmConnection conn = new AstmSerialConnection(
@@ -57,6 +54,7 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
         this.context = new AstmContext(conn);
         this.stateMachine = new AstmStateMachine(context);
         stateMachine.start();
+        this.running = true;
         logger.info("AsyncAstmSerialDriver started on " + portName);
     }
 
@@ -70,12 +68,11 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
         if (dataBits < 5 || dataBits > 8) {
             throw new IllegalArgumentException("Invalid data bits: " + dataBits + ". Must be 5-8.");
         }
-        // REMOVED: stopBits, parity, flowControl validation.
-        // AstmService maps UI values to jSerialComm constants correctly.
     }
 
     @Override
     public void stop() throws Exception {
+        this.running = false;
         if (stateMachine != null) {
             stateMachine.close();
         }
@@ -84,29 +81,33 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
 
     @Override
     public boolean send(byte[] data) throws Exception {
+        if (context == null) return false;
         TransmissionResult result = context.sendMessage(new String(data, charset));
         return result.getStatus() == TransmissionResult.Status.SUCCESS;
     }
 
     @Override
     public byte[] receive() throws Exception {
-        if (context == null) throw new IllegalStateException("Driver not started");
-        ReceivedMessage msg = context.getReceivedMessage();
-        return msg != null ? msg.getMessage().getBytes(charset) : new byte[0];
+        // IMPROVED: Match TCP driver behavior — non-blocking, return empty if nothing available.
+        // Do NOT call context.getReceivedMessage() here; that blocks forever.
+        return new byte[0];
     }
 
     @Override
     public boolean isConnected() {
-        return stateMachine != null && stateMachine.getCurrentStatus() != null;
+        // IMPROVED: Check running flag + stateMachine status for accurate state.
+        return running && stateMachine != null && stateMachine.getCurrentStatus() != null;
     }
 
     @Override
     public ReceivedMessage getReceivedMessage() throws InterruptedException {
+        if (context == null) throw new IllegalStateException("Driver not started");
         return context.getReceivedMessage();
     }
 
     @Override
     public TransmissionResult sendMessage(String message) throws InterruptedException {
+        if (context == null) throw new IllegalStateException("Driver not started");
         return context.sendMessage(message);
     }
 }

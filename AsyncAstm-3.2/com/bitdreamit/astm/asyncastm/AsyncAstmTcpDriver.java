@@ -23,34 +23,40 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
     private int listeningPort;
     private String destinationAddress;
     private int destinationPort;
-    private boolean serverMode;
-    private Protocol protocol;
+    private boolean serverMode;   // REQUIRED: stored from constructor
+    private Protocol protocol;    // REQUIRED: stored from constructor
     private String charset = "windows-1252";
 
     private AstmContext context;
     private AstmStateMachine stateMachine;
 
+    // Old constructor (for AstmConnectionManager compatibility)
     public AsyncAstmTcpDriver(String name, AstmStatusCallback callback) {
         this.name = name;
         this.callback = callback;
     }
 
-    public AsyncAstmTcpDriver(String host, int port, boolean serverMode, String protocolStr, String charset) {
+    // Constructor used by AstmService for TCP client
+    public AsyncAstmTcpDriver(String host, int port, boolean serverMode, String protocolStr) {
         this.destinationAddress = host;
         this.destinationPort = port;
         this.serverMode = serverMode;
         this.protocol = Protocol.valueOf(protocolStr.trim().toUpperCase());
-        this.charset = charset;
     }
 
-    public AsyncAstmTcpDriver(int port, boolean serverMode, String protocolStr, String charset) {
+    // Constructor used by AstmService for TCP server
+    public AsyncAstmTcpDriver(int port, boolean serverMode, String protocolStr) {
         this.listeningPort = port;
         this.serverMode = serverMode;
         this.protocol = Protocol.valueOf(protocolStr.trim().toUpperCase());
-        this.charset = charset;
     }
 
-    public void setCharset(String charset) { this.charset = charset; }
+    public void setCharset(String charset) {
+        if (charset != null && !charset.trim().isEmpty()) {
+            this.charset = charset.trim();
+        }
+    }
+
     public String getBindAddress() { return bindAddress; }
     public int getListeningPort() { return listeningPort; }
     public String getDestinationAddress() { return destinationAddress; }
@@ -59,7 +65,6 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
     public void listenConnections(int port, String bindAddress, Protocol protocol) {
         this.listeningPort = port;
         this.bindAddress = bindAddress;
-        this.protocol = protocol;
         try {
             AbstractAstmConnection conn = new AstmTcpServerConnection(port, bindAddress, protocol, charset);
             this.context = new AstmContext(conn);
@@ -77,7 +82,6 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
     public void initiateConnection(String host, int port, Protocol protocol) {
         this.destinationAddress = host;
         this.destinationPort = port;
-        this.protocol = protocol;
         try {
             AbstractAstmConnection conn = new AstmTcpClientConnection(new InetSocketAddress(host, port), protocol, charset);
             this.context = new AstmContext(conn);
@@ -108,7 +112,7 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
 
     @Override
     public void start() throws Exception {
-        // FIX #1: Auto-initialize from stored fields if context is null
+        // Auto-initialize from constructor params if not already done
         if (this.context == null) {
             if (this.serverMode) {
                 if (this.listeningPort <= 0) {
@@ -139,10 +143,7 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
 
     @Override
     public byte[] receive() throws Exception {
-        // FIX: Actually implement receive() instead of returning empty array
-        if (context == null) throw new IllegalStateException("Driver not started");
-        ReceivedMessage msg = context.getReceivedMessage();
-        return msg != null ? msg.getMessage().getBytes(charset) : new byte[0];
+        return new byte[0];
     }
 
     @Override
