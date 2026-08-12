@@ -42,7 +42,7 @@ public class AstmSettingsPanel extends AbstractSettingsPanel {
         JLabel lblTitle = new JLabel("<html><b style=\"font-size:18px;\">Bit Dream IT</b><br/><span style=\"font-size:13px;\">ASTM Extension for Mirth Connect / BridgeLink</span></html>");
         lblTitle.setForeground(Color.WHITE);
 
-        JLabel lblVer = new JLabel("v2.4.2");
+        JLabel lblVer = new JLabel("v3.0.2");
         lblVer.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         lblVer.setForeground(new Color(0xCC, 0xDD, 0xFF));
 
