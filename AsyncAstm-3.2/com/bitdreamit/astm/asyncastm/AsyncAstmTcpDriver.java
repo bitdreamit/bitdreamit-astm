@@ -29,6 +29,7 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
 
     private AstmContext context;
     private AstmStateMachine stateMachine;
+    private volatile boolean running = false;
 
     // Old constructor (for AstmConnectionManager compatibility)
     public AsyncAstmTcpDriver(String name, AstmStatusCallback callback) {
@@ -97,6 +98,7 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
     }
 
     public void close() {
+        this.running = false;
         try {
             if (stateMachine != null) {
                 stateMachine.close();
@@ -112,20 +114,32 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
 
     @Override
     public void start() throws Exception {
-        // FIX: Auto-initialize from constructor params if not already done
         if (this.context == null) {
-            if (this.serverMode) {
-                if (this.listeningPort <= 0) {
-                    throw new IllegalStateException("Server mode but no listening port configured");
+            this.running = true;
+            // FIX: Start connection in background thread so onStart() returns immediately
+            Thread starter = new Thread(() -> {
+                try {
+                    if (this.serverMode) {
+                        if (this.listeningPort <= 0) {
+                            logger.error("Server mode but no listening port configured");
+                            return;
+                        }
+                        String bind = (this.bindAddress != null) ? this.bindAddress : "0.0.0.0";
+                        listenConnections(this.listeningPort, bind, this.protocol);
+                    } else {
+                        if (this.destinationAddress == null || this.destinationPort <= 0) {
+                            logger.error("Client mode but no destination host/port configured");
+                            return;
+                        }
+                        initiateConnection(this.destinationAddress, this.destinationPort, this.protocol);
+                    }
+                } catch (Exception e) {
+                    logger.error("AsyncAstmTcpDriver background start failed", e);
                 }
-                String bind = (this.bindAddress != null) ? this.bindAddress : "0.0.0.0";
-                listenConnections(this.listeningPort, bind, this.protocol);
-            } else {
-                if (this.destinationAddress == null || this.destinationPort <= 0) {
-                    throw new IllegalStateException("Client mode but no destination host/port configured");
-                }
-                initiateConnection(this.destinationAddress, this.destinationPort, this.protocol);
-            }
+            });
+            starter.setName("AsyncAstmTcpDriver-starter");
+            starter.setDaemon(true);
+            starter.start();
         }
     }
 
@@ -136,6 +150,11 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
 
     @Override
     public boolean send(byte[] data) throws Exception {
+        // Wait for context to be ready (background start may still be in progress)
+        int retries = 300; // 30 seconds max
+        while (context == null && running && retries-- > 0) {
+            Thread.sleep(100);
+        }
         if (context == null) return false;
         TransmissionResult result = context.sendMessage(new String(data, charset));
         return result.getStatus() == TransmissionResult.Status.SUCCESS;
@@ -148,17 +167,28 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
 
     @Override
     public boolean isConnected() {
-        return stateMachine != null && stateMachine.getCurrentStatus() != null;
+        return running && stateMachine != null && stateMachine.getCurrentStatus() != null;
     }
 
     @Override
     public ReceivedMessage getReceivedMessage() throws InterruptedException {
-        if (context == null) throw new IllegalStateException("Driver not started");
+        // Wait for context to be ready (background start may still be in progress)
+        int retries = 300; // 30 seconds max
+        while (context == null && running && retries-- > 0) {
+            Thread.sleep(100);
+        }
+        if (context == null) {
+            throw new IllegalStateException("Driver not started or start failed");
+        }
         return context.getReceivedMessage();
     }
 
     @Override
     public TransmissionResult sendMessage(String message) throws InterruptedException {
+        int retries = 300;
+        while (context == null && running && retries-- > 0) {
+            Thread.sleep(100);
+        }
         if (context == null) throw new IllegalStateException("Driver not started");
         return context.sendMessage(message);
     }

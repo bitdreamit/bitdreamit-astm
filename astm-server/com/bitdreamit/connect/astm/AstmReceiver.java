@@ -11,7 +11,6 @@ public class AstmReceiver extends SourceConnector {
 
     private AstmService astmService;
     private AstmProperties properties;
-    // FIX: AtomicBoolean shared with background thread for reliable shutdown signal
     private final AtomicBoolean stopped = new AtomicBoolean(true);
 
     @Override
@@ -31,7 +30,6 @@ public class AstmReceiver extends SourceConnector {
         astmService.init(properties);
 
         try {
-            // FIX: Start driver BEFORE setting stopped=false so thread sees ready state
             astmService.startDriver();
             stopped.set(false);
             logger.info("AstmReceiver started with mode: " + properties.getTransportMode());

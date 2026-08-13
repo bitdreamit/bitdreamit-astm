@@ -70,13 +70,11 @@ public class AstmService implements ServerPlugin {
         return driver;
     }
 
-    // ServerPlugin lifecycle — called by Mirth on plugin startup
     @Override
     public void start() {
         logger.info("AstmService plugin started");
     }
 
-    // ServerPlugin lifecycle — called by Mirth on plugin shutdown
     @Override
     public void stop() {
         try {
@@ -86,13 +84,11 @@ public class AstmService implements ServerPlugin {
         }
     }
 
-    // REQUIRED by ServerPlugin interface
     @Override
     public String getPluginPointName() {
         return "ASTM Settings";
     }
 
-    // Called by AstmReceiver / AstmDispatcher after init()
     public void startDriver() throws Exception {
         if (driver == null) throw new IllegalStateException("Driver not initialized. Call init() first.");
         driver.start();

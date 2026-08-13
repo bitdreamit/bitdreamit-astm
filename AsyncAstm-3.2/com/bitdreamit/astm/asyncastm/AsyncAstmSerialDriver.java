@@ -9,9 +9,6 @@ import com.bitdreamit.astm.asyncastm.service.states.bundle.ReceivedMessage;
 import com.bitdreamit.astm.asyncastm.service.states.bundle.TransmissionResult;
 import org.apache.log4j.Logger;
 
-/**
- * Serial (RS-232) implementation of AsyncAstmDriver.
- */
 public class AsyncAstmSerialDriver implements AsyncAstmDriver {
     private static final Logger logger = Logger.getLogger(AsyncAstmSerialDriver.class);
 
@@ -49,13 +46,33 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
 
         validateSerialParams();
 
-        AbstractAstmConnection conn = new AstmSerialConnection(
-                portName, baudRate, dataBits, stopBits, parity, flowControl, p, charset);
-        this.context = new AstmContext(conn);
-        this.stateMachine = new AstmStateMachine(context);
-        stateMachine.start();
         this.running = true;
-        logger.info("AsyncAstmSerialDriver started on " + portName);
+        final String finalPortName = this.portName;
+        final int finalBaudRate = this.baudRate;
+        final int finalDataBits = this.dataBits;
+        final int finalStopBits = this.stopBits;
+        final int finalParity = this.parity;
+        final int finalFlowControl = this.flowControl;
+        final Protocol finalProtocol = p;
+        final String finalCharset = this.charset;
+
+        // FIX: Open serial port in background thread so onStart() returns immediately
+        Thread starter = new Thread(() -> {
+            try {
+                AbstractAstmConnection conn = new AstmSerialConnection(
+                    finalPortName, finalBaudRate, finalDataBits, finalStopBits,
+                    finalParity, finalFlowControl, finalProtocol, finalCharset);
+                this.context = new AstmContext(conn);
+                this.stateMachine = new AstmStateMachine(context);
+                stateMachine.start();
+                logger.info("AsyncAstmSerialDriver started on " + finalPortName);
+            } catch (Exception e) {
+                logger.error("AsyncAstmSerialDriver background start failed on " + finalPortName, e);
+            }
+        });
+        starter.setName("AsyncAstmSerialDriver-starter-" + portName);
+        starter.setDaemon(true);
+        starter.start();
     }
 
     private void validateSerialParams() {
@@ -81,6 +98,10 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
 
     @Override
     public boolean send(byte[] data) throws Exception {
+        int retries = 300;
+        while (context == null && running && retries-- > 0) {
+            Thread.sleep(100);
+        }
         if (context == null) return false;
         TransmissionResult result = context.sendMessage(new String(data, charset));
         return result.getStatus() == TransmissionResult.Status.SUCCESS;
@@ -88,25 +109,32 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
 
     @Override
     public byte[] receive() throws Exception {
-        // IMPROVED: Match TCP driver behavior — non-blocking, return empty if nothing available.
-        // Do NOT call context.getReceivedMessage() here; that blocks forever.
         return new byte[0];
     }
 
     @Override
     public boolean isConnected() {
-        // IMPROVED: Check running flag + stateMachine status for accurate state.
         return running && stateMachine != null && stateMachine.getCurrentStatus() != null;
     }
 
     @Override
     public ReceivedMessage getReceivedMessage() throws InterruptedException {
-        if (context == null) throw new IllegalStateException("Driver not started");
+        int retries = 300;
+        while (context == null && running && retries-- > 0) {
+            Thread.sleep(100);
+        }
+        if (context == null) {
+            throw new IllegalStateException("Driver not started or start failed");
+        }
         return context.getReceivedMessage();
     }
 
     @Override
     public TransmissionResult sendMessage(String message) throws InterruptedException {
+        int retries = 300;
+        while (context == null && running && retries-- > 0) {
+            Thread.sleep(100);
+        }
         if (context == null) throw new IllegalStateException("Driver not started");
         return context.sendMessage(message);
     }
