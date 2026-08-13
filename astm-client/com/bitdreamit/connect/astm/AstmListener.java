@@ -118,7 +118,7 @@ public class AstmListener extends ConnectorSettingsPanel implements ActionListen
         protocolPanel = new JPanel(new MigLayout("insets 8, gap 4", "[][grow]", ""));
         protocolPanel.setBackground(Color.WHITE);
         protocolPanel.setBorder(new TitledBorder("ASTM Protocol"));
-        protocolBox = new JComboBox<>(new String[]{"ELECSYS", "COBAS", "GENERIC"});
+        protocolBox = new JComboBox<>(new String[]{"ELECSYS", "COBAS"});
         enqAckBox = new JCheckBox("Use ENQ/ACK Handshake");
         enqAckBox.setSelected(true);
         enqAckBox.setBackground(Color.WHITE);

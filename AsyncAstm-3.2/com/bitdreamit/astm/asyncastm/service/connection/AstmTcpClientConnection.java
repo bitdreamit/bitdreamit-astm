@@ -33,11 +33,17 @@ public class AstmTcpClientConnection extends AbstractAstmConnection {
         do {
             try {
                 this.socket = new Socket(this.address.getAddress(), this.address.getPort());
-                logger.info("Connected successfully");
+                logger.info("Connected successfully to " + this.address.getHostName() + ":" + this.address.getPort());
                 this.connected = true;
             } catch (IOException e) {
                 ++attempt;
-                logger.debug("Connection failed. Reconnect in " + (delay / 1000) + "s (" + attempt + ")");
+                // FIX: log at WARN (not DEBUG) so users can actually see why
+                // the channel appears "started but silent". Previously DEBUG
+                // is hidden at default Mirth INFO log level.
+                logger.warn("TCP connect attempt " + attempt + " failed to "
+                        + this.address.getHostName() + ":" + this.address.getPort()
+                        + " (" + e.getClass().getSimpleName() + ": " + e.getMessage()
+                        + "). Retrying in " + (delay / 1000) + "s.");
                 Thread.sleep(delay);
                 if ((delay <<= 1) > 60000) delay = 60000;
             }

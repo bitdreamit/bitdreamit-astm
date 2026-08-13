@@ -11,6 +11,7 @@ public class AstmReceiver extends SourceConnector {
 
     private AstmService astmService;
     private AstmProperties properties;
+    // FIX: AtomicBoolean shared with background thread for reliable shutdown signal
     private final AtomicBoolean stopped = new AtomicBoolean(true);
 
     @Override
@@ -27,12 +28,16 @@ public class AstmReceiver extends SourceConnector {
     public void onStart() {
         properties = (AstmProperties) getConnectorProperties();
         astmService = new AstmService();
-        astmService.init(properties);
+        // FIX: pass `this` (the Connector) so AstmService can build a callback
+        // that dispatches ConnectionStatusEvent and calls channel.stop() on
+        // EXITING. This is the FIX for the "channel silently started" bug.
+        astmService.init(properties, this);
 
         try {
             astmService.startDriver();
             stopped.set(false);
-            logger.info("AstmReceiver started with mode: " + properties.getTransportMode());
+            logger.info("AstmReceiver started with mode: " + properties.getTransportMode()
+                    + " (channel=" + getChannel().getName() + ")");
 
             AstmReceiverService receiverService = new AstmReceiverService(this, astmService.getDriver(), stopped);
             Thread receiverThread = new Thread(receiverService);
@@ -42,7 +47,7 @@ public class AstmReceiver extends SourceConnector {
 
         } catch (Exception e) {
             stopped.set(true);
-            logger.error("Failed to start ASTM receiver", e);
+            logger.error("Failed to start ASTM receiver (channel=" + getChannel().getName() + ")", e);
             throw new RuntimeException("ASTM receiver start failed: " + e.getMessage(), e);
         }
     }

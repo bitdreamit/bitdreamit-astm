@@ -13,6 +13,7 @@ import com.bitdreamit.astm.asyncastm.service.states.callback.AstmStatusCallback;
 import org.apache.log4j.Logger;
 
 import java.net.InetSocketAddress;
+import java.util.concurrent.TimeUnit;
 
 public class AsyncAstmTcpDriver implements AsyncAstmDriver {
     private static final Logger logger = Logger.getLogger(AsyncAstmTcpDriver.class);
@@ -29,7 +30,6 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
 
     private AstmContext context;
     private AstmStateMachine stateMachine;
-    private volatile boolean running = false;
 
     // Old constructor (for AstmConnectionManager compatibility)
     public AsyncAstmTcpDriver(String name, AstmStatusCallback callback) {
@@ -42,14 +42,35 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
         this.destinationAddress = host;
         this.destinationPort = port;
         this.serverMode = serverMode;
-        this.protocol = Protocol.valueOf(protocolStr.trim().toUpperCase());
+        this.protocol = parseProtocol(protocolStr);
     }
 
     // Constructor used by AstmService for TCP server
     public AsyncAstmTcpDriver(int port, boolean serverMode, String protocolStr) {
         this.listeningPort = port;
         this.serverMode = serverMode;
-        this.protocol = Protocol.valueOf(protocolStr.trim().toUpperCase());
+        this.protocol = parseProtocol(protocolStr);
+    }
+
+    /**
+     * FIX: Validate the protocol string and emit a clear error message before
+     * it becomes a confusing IllegalArgumentException deep in the constructor.
+     * Also trims and uppercases the input.
+     */
+    private static Protocol parseProtocol(String protocolStr) {
+        if (protocolStr == null) {
+            throw new IllegalArgumentException("ASTM protocol is null. Expected ELECSYS or COBAS.");
+        }
+        String trimmed = protocolStr.trim().toUpperCase();
+        if (trimmed.isEmpty()) {
+            throw new IllegalArgumentException("ASTM protocol is empty. Expected ELECSYS or COBAS.");
+        }
+        try {
+            return Protocol.valueOf(trimmed);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                "Unknown ASTM protocol: '" + protocolStr + "'. Valid values: ELECSYS, COBAS.", e);
+        }
     }
 
     public void setCharset(String charset) {
@@ -70,13 +91,16 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
             AbstractAstmConnection conn = new AstmTcpServerConnection(port, bindAddress, protocol, charset);
             this.context = new AstmContext(conn);
             this.stateMachine = new AstmStateMachine(context);
+            if (callback != null) stateMachine.addCallback(callback);
             stateMachine.start();
             if (callback != null) {
                 callback.reportStatus(AstmConnectionStatus.CONNECTING);
             }
             logger.info("Server listening on " + bindAddress + ":" + port);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to listen on " + bindAddress + ":" + port, e);
+            // FIX: log at ERROR and rethrow with a clear message
+            logger.error("Failed to listen on " + bindAddress + ":" + port + " - " + e.getMessage(), e);
+            throw new RuntimeException("Failed to listen on " + bindAddress + ":" + port + " - " + e.getMessage(), e);
         }
     }
 
@@ -87,18 +111,19 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
             AbstractAstmConnection conn = new AstmTcpClientConnection(new InetSocketAddress(host, port), protocol, charset);
             this.context = new AstmContext(conn);
             this.stateMachine = new AstmStateMachine(context);
+            if (callback != null) stateMachine.addCallback(callback);
             stateMachine.start();
             if (callback != null) {
                 callback.reportStatus(AstmConnectionStatus.CONNECTING);
             }
-            logger.info("Client connected to " + host + ":" + port);
+            logger.info("Client connecting to " + host + ":" + port);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to connect to " + host + ":" + port, e);
+            logger.error("Failed to connect to " + host + ":" + port + " - " + e.getMessage(), e);
+            throw new RuntimeException("Failed to connect to " + host + ":" + port + " - " + e.getMessage(), e);
         }
     }
 
     public void close() {
-        this.running = false;
         try {
             if (stateMachine != null) {
                 stateMachine.close();
@@ -114,32 +139,20 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
 
     @Override
     public void start() throws Exception {
+        // FIX: Auto-initialize from constructor params if not already done
         if (this.context == null) {
-            this.running = true;
-            // FIX: Start connection in background thread so onStart() returns immediately
-            Thread starter = new Thread(() -> {
-                try {
-                    if (this.serverMode) {
-                        if (this.listeningPort <= 0) {
-                            logger.error("Server mode but no listening port configured");
-                            return;
-                        }
-                        String bind = (this.bindAddress != null) ? this.bindAddress : "0.0.0.0";
-                        listenConnections(this.listeningPort, bind, this.protocol);
-                    } else {
-                        if (this.destinationAddress == null || this.destinationPort <= 0) {
-                            logger.error("Client mode but no destination host/port configured");
-                            return;
-                        }
-                        initiateConnection(this.destinationAddress, this.destinationPort, this.protocol);
-                    }
-                } catch (Exception e) {
-                    logger.error("AsyncAstmTcpDriver background start failed", e);
+            if (this.serverMode) {
+                if (this.listeningPort <= 0) {
+                    throw new IllegalStateException("Server mode but no listening port configured");
                 }
-            });
-            starter.setName("AsyncAstmTcpDriver-starter");
-            starter.setDaemon(true);
-            starter.start();
+                String bind = (this.bindAddress != null) ? this.bindAddress : "0.0.0.0";
+                listenConnections(this.listeningPort, bind, this.protocol);
+            } else {
+                if (this.destinationAddress == null || this.destinationPort <= 0) {
+                    throw new IllegalStateException("Client mode but no destination host/port configured");
+                }
+                initiateConnection(this.destinationAddress, this.destinationPort, this.protocol);
+            }
         }
     }
 
@@ -150,11 +163,6 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
 
     @Override
     public boolean send(byte[] data) throws Exception {
-        // Wait for context to be ready (background start may still be in progress)
-        int retries = 300; // 30 seconds max
-        while (context == null && running && retries-- > 0) {
-            Thread.sleep(100);
-        }
         if (context == null) return false;
         TransmissionResult result = context.sendMessage(new String(data, charset));
         return result.getStatus() == TransmissionResult.Status.SUCCESS;
@@ -167,29 +175,47 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
 
     @Override
     public boolean isConnected() {
-        return running && stateMachine != null && stateMachine.getCurrentStatus() != null;
+        return stateMachine != null && stateMachine.getCurrentStatus() != null;
     }
 
     @Override
     public ReceivedMessage getReceivedMessage() throws InterruptedException {
-        // Wait for context to be ready (background start may still be in progress)
-        int retries = 300; // 30 seconds max
-        while (context == null && running && retries-- > 0) {
-            Thread.sleep(100);
-        }
-        if (context == null) {
-            throw new IllegalStateException("Driver not started or start failed");
-        }
+        if (context == null) throw new IllegalStateException("Driver not started");
         return context.getReceivedMessage();
     }
 
     @Override
+    public ReceivedMessage pollReceivedMessage(long timeout, TimeUnit unit) throws InterruptedException {
+        if (context == null) throw new IllegalStateException("Driver not started");
+        return context.pollReceivedMessage(timeout, unit);
+    }
+
+    @Override
     public TransmissionResult sendMessage(String message) throws InterruptedException {
-        int retries = 300;
-        while (context == null && running && retries-- > 0) {
-            Thread.sleep(100);
-        }
         if (context == null) throw new IllegalStateException("Driver not started");
         return context.sendMessage(message);
+    }
+
+    /**
+     * FIX: Allow AstmService to register a callback BEFORE start() is called.
+     * Without this, the state machine's callbacks set stays empty and Mirth
+     * never receives any state events.
+     */
+    @Override
+    public void addCallback(AstmStatusCallback callback) {
+        // Replace if already set (idempotent — safe to call multiple times)
+        this.callback = callback;
+        if (this.stateMachine != null) {
+            this.stateMachine.addCallback(callback);
+        }
+    }
+
+    /**
+     * FIX: Delegates to the state machine. AstmReceiverService polls this to
+     * detect a dead driver and stop blocking.
+     */
+    @Override
+    public boolean isAlive() {
+        return stateMachine != null && stateMachine.isAlive();
     }
 }

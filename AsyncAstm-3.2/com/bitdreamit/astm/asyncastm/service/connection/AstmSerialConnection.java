@@ -33,8 +33,17 @@ public class AstmSerialConnection extends AbstractAstmConnection {
 
     @Override
     public void doConnect() throws IOException, InterruptedException {
-        logger.info("Opening serial port: " + portName + " @ " + baudRate);
+        logger.info("Opening serial port: " + portName + " @ " + baudRate + " baud, "
+                + dataBits + " data bits, " + stopBits + " stop bits, parity=" + parity
+                + ", flow=" + flowControl);
         serialPort = SerialPort.getCommPort(portName);
+        if (serialPort == null) {
+            // FIX: throw IOException (not RuntimeException) so the state machine
+            // treats this as a connection failure and propagates to Mirth via
+            // the AstmStatusCallback.ERROR notification.
+            throw new IOException("Serial port not found: " + portName
+                    + ". Check device name and OS permissions.");
+        }
         serialPort.setBaudRate(baudRate);
         serialPort.setNumDataBits(dataBits);
         serialPort.setNumStopBits(stopBits);
@@ -44,10 +53,21 @@ public class AstmSerialConnection extends AbstractAstmConnection {
         serialPort.setComPortTimeouts(
                 SerialPort.TIMEOUT_READ_BLOCKING | SerialPort.TIMEOUT_WRITE_BLOCKING, 5000, 5000);
         if (!serialPort.openPort()) {
-            throw new RuntimeException("Failed to open serial port: " + portName);
+            // FIX: throw IOException so the state machine's catch-all in
+            // AstmStateMachine.stateLoop logs at ERROR and notifies Mirth via
+            // ERROR/EXITING callbacks. Previously this was a RuntimeException
+            // which leaked through the same path but produced confusing stack
+            // traces and no Mirth-side event dispatch.
+            String msg = "Failed to open serial port '" + portName
+                    + "'. Possible causes: port is in use by another process, "
+                    + "device does not exist, or insufficient OS permissions. "
+                    + "Configured: " + baudRate + " baud, " + dataBits + "N" + stopBits
+                    + ", parity=" + parity + ", flow=" + flowControl + ".";
+            logger.error(msg);
+            throw new IOException(msg);
         }
-        logger.info("Serial port opened successfully");
-        this.initialize();  // FIX #2: Start the background reader thread
+        logger.info("Serial port '" + portName + "' opened successfully");
+        this.initialize();  // Start the background reader thread
     }
 
     @Override

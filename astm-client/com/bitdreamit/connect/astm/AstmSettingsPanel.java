@@ -1,8 +1,6 @@
 package com.bitdreamit.connect.astm;
 
 import com.mirth.connect.client.ui.AbstractSettingsPanel;
-import com.mirth.connect.donkey.model.channel.ConnectorProperties;
-import com.mirth.connect.donkey.util.DonkeyElement;
 import net.miginfocom.swing.MigLayout;
 
 import javax.swing.*;
@@ -10,7 +8,6 @@ import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
 import java.awt.*;
-
 /**
  * Bit Dream IT — ASTM Extension Global Settings Panel
  * Professional information panel with dialect guide and feature overview.
@@ -134,20 +131,12 @@ public class AstmSettingsPanel extends AbstractSettingsPanel {
         return panel;
     }
 
-    // ===== Required AbstractSettingsPanel methods =====
-    public ConnectorProperties getProperties() {
-        return new AstmProperties() {
-            @Override public void migrate3_0_1(DonkeyElement e) {}
-            @Override public void migrate3_0_2(DonkeyElement e) {}
-            @Override public void migrate4_4_0(DonkeyElement e) { super.migrate4_4_0(e); }
-            @Override public void migrate4_5_0(DonkeyElement e) { super.migrate4_5_0(e); }
-        };
+    @Override
+    public void doRefresh() {
     }
 
-    public void setProperties(ConnectorProperties properties) {}
-    public ConnectorProperties getDefaults() { return getProperties(); }
-    public boolean checkProperties(ConnectorProperties properties, boolean highlight) { return true; }
-    public void resetInvalidProperties() {}
-    public void doRefresh() {}
-    public boolean doSave() { return false; }
+    @Override
+    public boolean doSave() {
+        return false;
+    }
 }

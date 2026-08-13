@@ -7,8 +7,14 @@ import com.bitdreamit.astm.asyncastm.service.states.AstmStateMachine;
 import com.bitdreamit.astm.asyncastm.service.states.bundle.AstmContext;
 import com.bitdreamit.astm.asyncastm.service.states.bundle.ReceivedMessage;
 import com.bitdreamit.astm.asyncastm.service.states.bundle.TransmissionResult;
+import com.bitdreamit.astm.asyncastm.service.states.callback.AstmStatusCallback;
 import org.apache.log4j.Logger;
 
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Serial (RS-232) implementation of AsyncAstmDriver.
+ */
 public class AsyncAstmSerialDriver implements AsyncAstmDriver {
     private static final Logger logger = Logger.getLogger(AsyncAstmSerialDriver.class);
 
@@ -21,6 +27,7 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
     private String protocol = "ELECSYS";
     private String charset = "windows-1252";
 
+    private AstmStatusCallback callback;
     private AstmContext context;
     private AstmStateMachine stateMachine;
     private volatile boolean running = false;
@@ -36,43 +43,32 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
 
     @Override
     public void start() throws Exception {
-        String protoUpper = protocol.trim().toUpperCase();
         Protocol p;
         try {
-            p = Protocol.valueOf(protoUpper);
+            p = Protocol.valueOf(protocol.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Unknown protocol: '" + protocol + "'. Valid: ELECSYS, COBAS");
+            throw new IllegalArgumentException(
+                "Unknown ASTM protocol: '" + protocol + "'. Valid: ELECSYS, COBAS.", e);
         }
 
         validateSerialParams();
 
-        this.running = true;
-        final String finalPortName = this.portName;
-        final int finalBaudRate = this.baudRate;
-        final int finalDataBits = this.dataBits;
-        final int finalStopBits = this.stopBits;
-        final int finalParity = this.parity;
-        final int finalFlowControl = this.flowControl;
-        final Protocol finalProtocol = p;
-        final String finalCharset = this.charset;
+        logger.info("Starting AsyncAstmSerialDriver on port=" + portName
+                + " baud=" + baudRate + " data=" + dataBits + " stop=" + stopBits
+                + " parity=" + parity + " flow=" + flowControl
+                + " protocol=" + protocol + " charset=" + charset);
 
-        // FIX: Open serial port in background thread so onStart() returns immediately
-        Thread starter = new Thread(() -> {
-            try {
-                AbstractAstmConnection conn = new AstmSerialConnection(
-                    finalPortName, finalBaudRate, finalDataBits, finalStopBits,
-                    finalParity, finalFlowControl, finalProtocol, finalCharset);
-                this.context = new AstmContext(conn);
-                this.stateMachine = new AstmStateMachine(context);
-                stateMachine.start();
-                logger.info("AsyncAstmSerialDriver started on " + finalPortName);
-            } catch (Exception e) {
-                logger.error("AsyncAstmSerialDriver background start failed on " + finalPortName, e);
-            }
-        });
-        starter.setName("AsyncAstmSerialDriver-starter-" + portName);
-        starter.setDaemon(true);
-        starter.start();
+        AbstractAstmConnection conn = new AstmSerialConnection(
+                portName, baudRate, dataBits, stopBits, parity, flowControl, p, charset);
+        this.context = new AstmContext(conn);
+        this.stateMachine = new AstmStateMachine(context);
+        // FIX: wire the callback so Mirth gets connection-status events.
+        if (callback != null) {
+            stateMachine.addCallback(callback);
+        }
+        stateMachine.start();
+        this.running = true;
+        logger.info("AsyncAstmSerialDriver started on " + portName);
     }
 
     private void validateSerialParams() {
@@ -84,6 +80,9 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
         }
         if (dataBits < 5 || dataBits > 8) {
             throw new IllegalArgumentException("Invalid data bits: " + dataBits + ". Must be 5-8.");
+        }
+        if (portName == null || portName.trim().isEmpty()) {
+            throw new IllegalArgumentException("Serial port name is empty");
         }
     }
 
@@ -98,10 +97,6 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
 
     @Override
     public boolean send(byte[] data) throws Exception {
-        int retries = 300;
-        while (context == null && running && retries-- > 0) {
-            Thread.sleep(100);
-        }
         if (context == null) return false;
         TransmissionResult result = context.sendMessage(new String(data, charset));
         return result.getStatus() == TransmissionResult.Status.SUCCESS;
@@ -109,6 +104,8 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
 
     @Override
     public byte[] receive() throws Exception {
+        // Non-blocking: return empty if nothing available.
+        // Do NOT call context.getReceivedMessage() here; that blocks forever.
         return new byte[0];
     }
 
@@ -119,23 +116,39 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
 
     @Override
     public ReceivedMessage getReceivedMessage() throws InterruptedException {
-        int retries = 300;
-        while (context == null && running && retries-- > 0) {
-            Thread.sleep(100);
-        }
-        if (context == null) {
-            throw new IllegalStateException("Driver not started or start failed");
-        }
+        if (context == null) throw new IllegalStateException("Driver not started");
         return context.getReceivedMessage();
     }
 
     @Override
+    public ReceivedMessage pollReceivedMessage(long timeout, TimeUnit unit) throws InterruptedException {
+        if (context == null) throw new IllegalStateException("Driver not started");
+        return context.pollReceivedMessage(timeout, unit);
+    }
+
+    @Override
     public TransmissionResult sendMessage(String message) throws InterruptedException {
-        int retries = 300;
-        while (context == null && running && retries-- > 0) {
-            Thread.sleep(100);
-        }
         if (context == null) throw new IllegalStateException("Driver not started");
         return context.sendMessage(message);
+    }
+
+    /**
+     * FIX: Allow AstmService to register a callback BEFORE start() is called.
+     */
+    @Override
+    public void addCallback(AstmStatusCallback callback) {
+        this.callback = callback;
+        if (this.stateMachine != null) {
+            this.stateMachine.addCallback(callback);
+        }
+    }
+
+    /**
+     * FIX: Delegates to the state machine. AstmReceiverService polls this to
+     * detect a dead driver and stop blocking.
+     */
+    @Override
+    public boolean isAlive() {
+        return running && stateMachine != null && stateMachine.isAlive();
     }
 }
