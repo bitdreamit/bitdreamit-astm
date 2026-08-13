@@ -4,12 +4,15 @@ import com.mirth.connect.donkey.server.channel.DispatchResult;
 import com.mirth.connect.donkey.server.channel.SourceConnector;
 import org.apache.log4j.Logger;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 public class AstmReceiver extends SourceConnector {
     private static final Logger logger = Logger.getLogger(AstmReceiver.class);
 
     private AstmService astmService;
     private AstmProperties properties;
-    private volatile boolean running = false;
+    // FIX: AtomicBoolean shared with background thread for reliable shutdown signal
+    private final AtomicBoolean stopped = new AtomicBoolean(true);
 
     @Override
     public void onDeploy() {
@@ -28,16 +31,19 @@ public class AstmReceiver extends SourceConnector {
         astmService.init(properties);
 
         try {
+            // FIX: Start driver BEFORE setting stopped=false so thread sees ready state
             astmService.startDriver();
-            running = true;
+            stopped.set(false);
             logger.info("AstmReceiver started with mode: " + properties.getTransportMode());
 
-            AstmReceiverService receiverService = new AstmReceiverService(this, astmService.getDriver());
+            AstmReceiverService receiverService = new AstmReceiverService(this, astmService.getDriver(), stopped);
             Thread receiverThread = new Thread(receiverService);
             receiverThread.setName("AstmReceiver-" + getChannelId());
+            receiverThread.setDaemon(true);
             receiverThread.start();
 
         } catch (Exception e) {
+            stopped.set(true);
             logger.error("Failed to start ASTM receiver", e);
             throw new RuntimeException("ASTM receiver start failed: " + e.getMessage(), e);
         }
@@ -45,7 +51,7 @@ public class AstmReceiver extends SourceConnector {
 
     @Override
     public void onStop() {
-        running = false;
+        stopped.set(true);
         try {
             if (astmService != null) {
                 astmService.stopDriver();
@@ -57,7 +63,7 @@ public class AstmReceiver extends SourceConnector {
 
     @Override
     public void onHalt() {
-        running = false;
+        stopped.set(true);
         try {
             if (astmService != null) {
                 astmService.stopDriver();

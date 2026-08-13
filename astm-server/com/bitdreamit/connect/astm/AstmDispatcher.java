@@ -30,11 +30,25 @@ public class AstmDispatcher extends DestinationConnector {
         try {
             astmService = new AstmService();
             astmService.init((AstmProperties) getConnectorProperties());
-            astmService.startDriver();
-            logger.info("AstmDispatcher started");
+            // FIX: For TCP client mode, startDriver() blocks on socket connect.
+            // We start it in a background thread so onStart() returns immediately
+            // and Mirth doesn't think the connector is hung.
+            final AstmService svc = astmService;
+            Thread starter = new Thread(() -> {
+                try {
+                    svc.startDriver();
+                    logger.info("AstmDispatcher driver started in background");
+                } catch (Exception e) {
+                    logger.error("AstmDispatcher background driver start failed", e);
+                }
+            });
+            starter.setName("AstmDispatcher-starter-" + getChannelId());
+            starter.setDaemon(true);
+            starter.start();
+            logger.info("AstmDispatcher onStart() completed (driver starting in background)");
         } catch (Exception e) {
-            logger.error("Failed to start ASTM dispatcher", e);
-            throw new RuntimeException("ASTM dispatcher start failed: " + e.getMessage(), e);
+            logger.error("Failed to initialize ASTM dispatcher", e);
+            throw new RuntimeException("ASTM dispatcher init failed: " + e.getMessage(), e);
         }
     }
 
@@ -67,6 +81,12 @@ public class AstmDispatcher extends DestinationConnector {
             MessageContent encoded = message.getEncoded();
             String payload = encoded != null ? encoded.getContent() : "";
             byte[] data = payload.getBytes(Charset.forName(props.getCharsetName()));
+
+            // Wait for driver to be ready if background start hasn't finished yet
+            int retries = 50; // 5 seconds max
+            while (retries-- > 0 && (astmService == null || !astmService.getDriver().isConnected())) {
+                Thread.sleep(100);
+            }
 
             boolean sent = astmService.send(data);
             if (sent) {
