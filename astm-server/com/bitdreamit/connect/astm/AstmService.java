@@ -1,12 +1,13 @@
 package com.bitdreamit.connect.astm;
 
+import com.mirth.connect.plugins.ServerPlugin;
 import com.bitdreamit.astm.asyncastm.AsyncAstmDriver;
 import com.bitdreamit.astm.asyncastm.AsyncAstmSerialDriver;
 import com.bitdreamit.astm.asyncastm.AsyncAstmTcpDriver;
 import com.fazecast.jSerialComm.SerialPort;
 import org.apache.log4j.Logger;
 
-public class AstmService {
+public class AstmService implements ServerPlugin {
     private AsyncAstmDriver driver;
     private static final Logger logger = Logger.getLogger(AstmService.class);
 
@@ -69,12 +70,35 @@ public class AstmService {
         return driver;
     }
 
-    public void start() throws Exception {
+    // ServerPlugin lifecycle — called by Mirth on plugin startup
+    @Override
+    public void start() {
+        logger.info("AstmService plugin started");
+    }
+
+    // ServerPlugin lifecycle — called by Mirth on plugin shutdown
+    @Override
+    public void stop() {
+        try {
+            if (driver != null) driver.stop();
+        } catch (Exception e) {
+            logger.error("Error stopping ASTM service", e);
+        }
+    }
+
+    // REQUIRED by ServerPlugin interface
+    @Override
+    public String getPluginPointName() {
+        return "ASTM Settings";
+    }
+
+    // Called by AstmReceiver / AstmDispatcher after init()
+    public void startDriver() throws Exception {
         if (driver == null) throw new IllegalStateException("Driver not initialized. Call init() first.");
         driver.start();
     }
 
-    public void stop() throws Exception {
+    public void stopDriver() throws Exception {
         if (driver != null) driver.stop();
     }
 

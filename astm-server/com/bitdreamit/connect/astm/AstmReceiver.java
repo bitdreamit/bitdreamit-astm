@@ -28,11 +28,10 @@ public class AstmReceiver extends SourceConnector {
         astmService.init(properties);
 
         try {
-            astmService.start();
+            astmService.startDriver();
             running = true;
             logger.info("AstmReceiver started with mode: " + properties.getTransportMode());
 
-            // Start the polling service thread
             AstmReceiverService receiverService = new AstmReceiverService(this, astmService.getDriver());
             Thread receiverThread = new Thread(receiverService);
             receiverThread.setName("AstmReceiver-" + getChannelId());
@@ -49,7 +48,7 @@ public class AstmReceiver extends SourceConnector {
         running = false;
         try {
             if (astmService != null) {
-                astmService.stop();
+                astmService.stopDriver();
             }
         } catch (Exception e) {
             logger.error("Error stopping ASTM receiver", e);
@@ -61,7 +60,7 @@ public class AstmReceiver extends SourceConnector {
         running = false;
         try {
             if (astmService != null) {
-                astmService.stop();
+                astmService.stopDriver();
             }
         } catch (Exception e) {
             logger.error("Error halting ASTM receiver", e);

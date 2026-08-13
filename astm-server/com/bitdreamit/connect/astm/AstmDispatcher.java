@@ -30,7 +30,7 @@ public class AstmDispatcher extends DestinationConnector {
         try {
             astmService = new AstmService();
             astmService.init((AstmProperties) getConnectorProperties());
-            astmService.start();
+            astmService.startDriver();
             logger.info("AstmDispatcher started");
         } catch (Exception e) {
             logger.error("Failed to start ASTM dispatcher", e);
@@ -42,7 +42,7 @@ public class AstmDispatcher extends DestinationConnector {
     public void onStop() {
         try {
             if (astmService != null) {
-                astmService.stop();
+                astmService.stopDriver();
             }
         } catch (Exception e) {
             logger.error("Error stopping ASTM dispatcher", e);
@@ -53,7 +53,7 @@ public class AstmDispatcher extends DestinationConnector {
     public void onHalt() {
         try {
             if (astmService != null) {
-                astmService.stop();
+                astmService.stopDriver();
             }
         } catch (Exception e) {
             logger.error("Error halting ASTM dispatcher", e);

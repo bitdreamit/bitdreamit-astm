@@ -23,8 +23,8 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
     private int listeningPort;
     private String destinationAddress;
     private int destinationPort;
-    private boolean serverMode;   // REQUIRED: stored from constructor
-    private Protocol protocol;    // REQUIRED: stored from constructor
+    private boolean serverMode;
+    private Protocol protocol;
     private String charset = "windows-1252";
 
     private AstmContext context;
@@ -112,7 +112,7 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
 
     @Override
     public void start() throws Exception {
-        // Auto-initialize from constructor params if not already done
+        // FIX: Auto-initialize from constructor params if not already done
         if (this.context == null) {
             if (this.serverMode) {
                 if (this.listeningPort <= 0) {
