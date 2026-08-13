@@ -10,6 +10,17 @@ import org.apache.log4j.Logger;
 
 /**
  * Abstract base for all ASTM protocol states.
+ *
+ * FIX (Bug #9): run() previously only caught InterruptedException and EOFException.
+ * Any RuntimeException thrown by execute() (e.g., from AstmSerialConnection.doConnect()
+ * when the serial port fails to open, or from a NullPointerException in the reader
+ * thread bridge) propagated up to AstmStateMachine.stateLoop's catch(Exception),
+ * which logged at FATAL and killed the state machine entirely. The channel would
+ * appear "Started" in Mirth but be completely dead.
+ *
+ * Now: RuntimeException is caught at the state level, logged at ERROR, and
+ * triggers a transition to ReconnectState so the state machine can retry
+ * (or, if ReconnectState also fails, to DisconnectState → ExitState).
  */
 public abstract class AstmState implements Closeable {
     private static final Logger logger = Logger.getLogger(AstmState.class.getName());
@@ -47,7 +58,20 @@ public abstract class AstmState implements Closeable {
             logger.debug("Interrupted state, setting next state to Disconnect");
             transitionTo(DisconnectState.class);
         } catch (EOFException e) {
-            logger.debug("ASTM disconnection");
+            logger.debug("ASTM disconnection (EOF)");
+            transitionTo(ReconnectState.class);
+        } catch (IOException e) {
+            // FIX (Bug #9): Treat IOException as a transient failure — try to reconnect.
+            logger.warn("I/O error in state " + getName() + ", will attempt to reconnect: " + e.getMessage());
+            transitionTo(ReconnectState.class);
+        } catch (RuntimeException e) {
+            // FIX (Bug #9): Previously RuntimeException propagated all the way up
+            // and killed the state machine silently (well, FATAL log, but no Mirth
+            // event). Now we catch it here, log it loudly, and try to reconnect.
+            // If reconnect also fails, DisconnectState → ExitState will cleanly
+            // shut down the channel.
+            logger.error("Unexpected runtime exception in state " + getName()
+                + ", attempting reconnect", e);
             transitionTo(ReconnectState.class);
         }
         return this.nextState;

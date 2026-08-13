@@ -35,5 +35,6 @@
     </orderEntry>
     <orderEntry type="library" name="astm-shared" level="project" />
     <orderEntry type="library" name="jSerialComm-2.10.4" level="project" />
+    <orderEntry type="library" name="donkey-model" level="project" />
   </component>
 </module>

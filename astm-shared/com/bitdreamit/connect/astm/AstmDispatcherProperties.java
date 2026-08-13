@@ -79,6 +79,11 @@ public class AstmDispatcherProperties extends AstmProperties implements Destinat
         super.migrate4_4_0(element);
     }
 
+    /**
+     * FIX (Bug #1): Override migrate4_5_0() so that v2.4.2 destination
+     * connectors get their old fields migrated to the new transportMode/
+     * host/port fields.
+     */
     @Override
     public void migrate4_5_0(DonkeyElement element) {
         super.migrate4_5_0(element);
@@ -106,15 +111,22 @@ public class AstmDispatcherProperties extends AstmProperties implements Destinat
         StringBuilder builder = new StringBuilder();
         String newLine = "\n";
         builder.append("MODE: ");
-        if (this.isServerMode()) {
-            builder.append("SERVER");
+        if (this.getTransportMode() == AstmProperties.TransportMode.TCP_SERVER) {
+            builder.append("TCP SERVER");
             builder.append(newLine);
             builder.append("BIND: ");
             builder.append(this.getHost() != null ? this.getHost() : "0.0.0.0");
             builder.append(":");
             builder.append(this.getPort());
+        } else if (this.getTransportMode() == AstmProperties.TransportMode.SERIAL) {
+            builder.append("SERIAL");
+            builder.append(newLine);
+            builder.append("PORT: ");
+            builder.append(this.getSerialPort());
+            builder.append(" @ ");
+            builder.append(this.getBaudRate());
         } else {
-            builder.append("CLIENT");
+            builder.append("TCP CLIENT");
             builder.append(newLine);
             builder.append("ADDRESS: ");
             builder.append(this.getHost());

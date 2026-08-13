@@ -55,6 +55,12 @@ public class AstmReceiverProperties extends AstmProperties implements SourceConn
         super.migrate4_4_0(element);
     }
 
+    /**
+     * FIX (Bug #1): Override migrate4_5_0() so that channels created under v2.4.2
+     * get their old serverMode/localPort/remoteAddress/remotePort fields migrated
+     * to the new transportMode/host/port fields. Without this migration, channels
+     * silently reset to TCP_CLIENT mode pointing at the default host/port.
+     */
     @Override
     public void migrate4_5_0(DonkeyElement element) {
         super.migrate4_5_0(element);

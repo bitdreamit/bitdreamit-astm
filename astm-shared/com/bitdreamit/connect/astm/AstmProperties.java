@@ -14,11 +14,15 @@ import java.util.Objects;
 public abstract class AstmProperties extends ConnectorProperties {
     private static final long serialVersionUID = 1L;
 
-    // ========== TRANSPORT MODE (NEW) ==========
+    // ========== TRANSPORT MODE ==========
     public enum TransportMode { TCP_CLIENT, TCP_SERVER, SERIAL }
-    private TransportMode transportMode = TransportMode.TCP_CLIENT;
 
-    // ========== OLD TCP FIELDS (KEEP FOR BACKWARD COMPATIBILITY) ==========
+    // FIX (Bug #8): Default transportMode was TCP_CLIENT. The v2.4.2 default
+    // behavior was serverMode=true (TCP server). Existing channels upgrading
+    // from v2.4.2 expect to be TCP servers by default. Changed to TCP_SERVER.
+    private TransportMode transportMode = TransportMode.TCP_SERVER;
+
+    // ========== OLD TCP FIELDS (BACKWARD COMPATIBILITY — used by migration only) ==========
     protected boolean serverMode = true;
     protected boolean allInterfaces = true;
     protected String addressBind = "0.0.0.0";
@@ -27,11 +31,16 @@ public abstract class AstmProperties extends ConnectorProperties {
     protected String remotePort = "3600";
 
     // ========== NEW TCP FIELDS ==========
-    private String host = "127.0.0.1";
-    private int port = 5004;
+    // FIX (Bug #8): Default port was 5004 (matching Mirth's default HL7 port),
+    // but v2.4.2 used 3600. Restored to 3600 to match user expectations.
+    // FIX (Bug #8): Default host was 127.0.0.1. For TCP_SERVER mode this is the
+    // bind address — 0.0.0.0 (all interfaces) is the safer default and matches
+    // v2.4.2's allInterfaces=true default.
+    private String host = "0.0.0.0";
+    private int port = 3600;
     private int connectionTimeout = 30000;
 
-    // ========== SERIAL FIELDS (NEW) ==========
+    // ========== SERIAL FIELDS ==========
     private String serialPort = "COM1";
     private int baudRate = 9600;
     private int dataBits = 8;
@@ -51,7 +60,7 @@ public abstract class AstmProperties extends ConnectorProperties {
     private int maxFrameSize = 240;
     private int interFrameDelay = 100;
 
-    // ========== CONNECTOR PROPERTIES (OLD — KEEP) ==========
+    // ========== CONNECTOR PROPERTIES ==========
     protected SourceConnectorProperties sourceConnectorProperties;
     protected DestinationConnectorProperties destinationConnectorProperties;
 
@@ -113,13 +122,8 @@ public abstract class AstmProperties extends ConnectorProperties {
     public String getRemotePort() { return this.remotePort; }
     public void setRemotePort(String remotePort) { this.remotePort = remotePort; }
 
-
-    public void setProtocol(String protocol) {
-        this.protocol = protocol;
-    }
-
+    public void setProtocol(String protocol) { this.protocol = protocol; }
     public String getAstmProtocol() { return this.astmProtocol; }
-
     public void setAstmProtocol(String astmProtocol) { this.astmProtocol = astmProtocol; }
 
     // ========== GETTERS & SETTERS — NEW ==========
@@ -174,8 +178,10 @@ public abstract class AstmProperties extends ConnectorProperties {
     public String toFormattedString() {
         if (transportMode == TransportMode.SERIAL) {
             return "ASTM Serial [" + serialPort + " @ " + baudRate + "]";
+        } else if (transportMode == TransportMode.TCP_SERVER) {
+            return "ASTM TCP Server [" + host + ":" + port + "]";
         } else {
-            return "ASTM TCP [" + host + ":" + port + "]";
+            return "ASTM TCP Client [" + host + ":" + port + "]";
         }
     }
 
@@ -192,7 +198,6 @@ public abstract class AstmProperties extends ConnectorProperties {
         purgedProperties.put("remoteAddress", this.remoteAddress);
         purgedProperties.put("remotePort", PurgeUtil.getNumericValue(this.remotePort));
         purgedProperties.put("transportMode", this.transportMode.name());
-        // FIX: Include new fields for accurate pruning statistics
         purgedProperties.put("host", this.host);
         purgedProperties.put("port", this.port);
         purgedProperties.put("serialPort", this.serialPort);
@@ -202,7 +207,7 @@ public abstract class AstmProperties extends ConnectorProperties {
         return purgedProperties;
     }
 
-    // ========== MIGRATION METHODS (OLD — KEEP) ==========
+    // ========== MIGRATION METHODS ==========
     public void migrate3_0_1(DonkeyElement element) {}
     public void migrate3_0_2(DonkeyElement element) {}
     public void migrate3_1_0(DonkeyElement element) { super.migrate3_1_0(element); }
@@ -212,6 +217,7 @@ public abstract class AstmProperties extends ConnectorProperties {
     public void migrate3_5_0(DonkeyElement element) {}
     public void migrate3_6_0(DonkeyElement element) {}
     public void migrate3_7_0(DonkeyElement element) {}
+
 
     // ========== EQUALS & HASHCODE ==========
     @Override

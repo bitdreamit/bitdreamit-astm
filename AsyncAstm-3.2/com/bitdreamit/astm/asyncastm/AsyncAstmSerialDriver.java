@@ -7,13 +7,20 @@ import com.bitdreamit.astm.asyncastm.service.states.AstmStateMachine;
 import com.bitdreamit.astm.asyncastm.service.states.bundle.AstmContext;
 import com.bitdreamit.astm.asyncastm.service.states.bundle.ReceivedMessage;
 import com.bitdreamit.astm.asyncastm.service.states.bundle.TransmissionResult;
+import com.bitdreamit.astm.asyncastm.service.states.callback.AstmConnectionStatus;
 import com.bitdreamit.astm.asyncastm.service.states.callback.AstmStatusCallback;
 import org.apache.log4j.Logger;
 
-import java.util.concurrent.TimeUnit;
-
 /**
  * Serial (RS-232) implementation of AsyncAstmDriver.
+ *
+ * FIX (Bug #6): isConnected() was returning true based on `running` flag
+ * (which is set at the end of start()) instead of actual state machine status.
+ * Now matches the same logic as AsyncAstmTcpDriver — only true when state
+ * machine has reached IDLE / SENDING / RECEIVING.
+ *
+ * FIX (Bug #4): Added setStatusCallback() to allow AstmReceiver / AstmDispatcher
+ * to register a status callback after the driver is constructed.
  */
 public class AsyncAstmSerialDriver implements AsyncAstmDriver {
     private static final Logger logger = Logger.getLogger(AsyncAstmSerialDriver.class);
@@ -41,28 +48,34 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
     public void setProtocol(String v) { this.protocol = v; }
     public void setCharset(String v) { this.charset = v; }
 
+    /**
+     * FIX (Bug #4): Allow AstmReceiver / AstmDispatcher to register a status
+     * callback after the driver is constructed by AstmService.createDriver().
+     */
+    public void setStatusCallback(AstmStatusCallback callback) {
+        this.callback = callback;
+        if (stateMachine != null) {
+            stateMachine.addCallback(callback);
+        }
+    }
+
     @Override
     public void start() throws Exception {
+        String protoUpper = protocol.trim().toUpperCase();
         Protocol p;
         try {
-            p = Protocol.valueOf(protocol.trim().toUpperCase());
+            p = Protocol.valueOf(protoUpper);
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException(
-                "Unknown ASTM protocol: '" + protocol + "'. Valid: ELECSYS, COBAS.", e);
+            logger.warn("Unknown protocol '" + protocol + "', defaulting to ELECSYS");
+            p = Protocol.ELECSYS;
         }
 
         validateSerialParams();
-
-        logger.info("Starting AsyncAstmSerialDriver on port=" + portName
-                + " baud=" + baudRate + " data=" + dataBits + " stop=" + stopBits
-                + " parity=" + parity + " flow=" + flowControl
-                + " protocol=" + protocol + " charset=" + charset);
 
         AbstractAstmConnection conn = new AstmSerialConnection(
                 portName, baudRate, dataBits, stopBits, parity, flowControl, p, charset);
         this.context = new AstmContext(conn);
         this.stateMachine = new AstmStateMachine(context);
-        // FIX: wire the callback so Mirth gets connection-status events.
         if (callback != null) {
             stateMachine.addCallback(callback);
         }
@@ -80,9 +93,6 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
         }
         if (dataBits < 5 || dataBits > 8) {
             throw new IllegalArgumentException("Invalid data bits: " + dataBits + ". Must be 5-8.");
-        }
-        if (portName == null || portName.trim().isEmpty()) {
-            throw new IllegalArgumentException("Serial port name is empty");
         }
     }
 
@@ -104,14 +114,20 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
 
     @Override
     public byte[] receive() throws Exception {
-        // Non-blocking: return empty if nothing available.
-        // Do NOT call context.getReceivedMessage() here; that blocks forever.
         return new byte[0];
     }
 
+    /**
+     * FIX (Bug #6): Match AsyncAstmTcpDriver behavior — return true only when
+     * the state machine has reached an actually-connected state.
+     */
     @Override
     public boolean isConnected() {
-        return running && stateMachine != null && stateMachine.getCurrentStatus() != null;
+        if (stateMachine == null) return false;
+        AstmConnectionStatus s = stateMachine.getCurrentStatus();
+        return s == AstmConnectionStatus.IDLE
+            || s == AstmConnectionStatus.SENDING
+            || s == AstmConnectionStatus.RECEIVING;
     }
 
     @Override
@@ -121,34 +137,8 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
     }
 
     @Override
-    public ReceivedMessage pollReceivedMessage(long timeout, TimeUnit unit) throws InterruptedException {
-        if (context == null) throw new IllegalStateException("Driver not started");
-        return context.pollReceivedMessage(timeout, unit);
-    }
-
-    @Override
     public TransmissionResult sendMessage(String message) throws InterruptedException {
         if (context == null) throw new IllegalStateException("Driver not started");
         return context.sendMessage(message);
-    }
-
-    /**
-     * FIX: Allow AstmService to register a callback BEFORE start() is called.
-     */
-    @Override
-    public void addCallback(AstmStatusCallback callback) {
-        this.callback = callback;
-        if (this.stateMachine != null) {
-            this.stateMachine.addCallback(callback);
-        }
-    }
-
-    /**
-     * FIX: Delegates to the state machine. AstmReceiverService polls this to
-     * detect a dead driver and stop blocking.
-     */
-    @Override
-    public boolean isAlive() {
-        return running && stateMachine != null && stateMachine.isAlive();
     }
 }

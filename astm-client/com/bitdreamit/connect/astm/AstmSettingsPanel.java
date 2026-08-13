@@ -1,6 +1,7 @@
 package com.bitdreamit.connect.astm;
 
 import com.mirth.connect.client.ui.AbstractSettingsPanel;
+import com.mirth.connect.donkey.model.channel.ConnectorProperties;
 import net.miginfocom.swing.MigLayout;
 
 import javax.swing.*;
@@ -8,6 +9,7 @@ import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
 import java.awt.*;
+
 /**
  * Bit Dream IT — ASTM Extension Global Settings Panel
  * Professional information panel with dialect guide and feature overview.
@@ -39,7 +41,7 @@ public class AstmSettingsPanel extends AbstractSettingsPanel {
         JLabel lblTitle = new JLabel("<html><b style=\"font-size:18px;\">Bit Dream IT</b><br/><span style=\"font-size:13px;\">ASTM Extension for Mirth Connect / BridgeLink</span></html>");
         lblTitle.setForeground(Color.WHITE);
 
-        JLabel lblVer = new JLabel("v3.0.2");
+        JLabel lblVer = new JLabel("v3.0.3");
         lblVer.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         lblVer.setForeground(new Color(0xCC, 0xDD, 0xFF));
 
@@ -131,12 +133,9 @@ public class AstmSettingsPanel extends AbstractSettingsPanel {
         return panel;
     }
 
-    @Override
-    public void doRefresh() {
-    }
-
-    @Override
-    public boolean doSave() {
-        return false;
-    }
+    public void setProperties(ConnectorProperties properties) {}
+    public boolean checkProperties(ConnectorProperties properties, boolean highlight) { return true; }
+    public void resetInvalidProperties() {}
+    public void doRefresh() {}
+    public boolean doSave() { return false; }
 }
