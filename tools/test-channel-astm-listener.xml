@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  bitdreamit-astm v3.0.3 - Test Channel XML
+
+  This is a minimal but complete Mirth Connect channel that uses the patched
+  ASTM Listener source connector. It listens on TCP port 3600 (TCP Server
+  mode, ELECSYS dialect), accepts an incoming ASTM transfer, and writes the
+  decoded message text to a file under /tmp/astm-output/.
+
+  Use this channel together with tools/analyzer-simulator.py to verify the
+  patched plugin end-to-end.
+
+  HOW TO IMPORT:
+    1. Build and install the patched plugin (see README.md).
+    2. In Mirth Administrator: Channels -> Import Channel -> select this file.
+    3. Deploy the channel.
+    4. Run: python3 tools/analyzer-simulator.py - host 127.0.0.1 - port 3600
+    5. Check the Mirth Messages view - you should see a new message with
+       decoded ASTM records (H|... P|... O|... R|... R|... L|...).
+    6. Check /tmp/astm-output/ - should contain a file with the raw message.
+
+  EXPECTED DASHBOARD STATUS:
+    - Started (green)
+    - Status badge: "Listening on 0.0.0.0:3600"
+    - Then: "Connected" (when simulator connects)
+    - Then: "Receiving new message" (during transfer)
+    - Then: back to "Connected" (waiting for next message)
+
+  If the badge stays BLANK or the channel shows Started but no messages flow,
+  the patched plugin is NOT correctly installed - see DIAGNOSTIC.md.
+  ============================================================================
+-->
+<channel version="4.5.0">
+  <id>test-astm-listener-v303</id>
+  <name>Test ASTM Listener v3.0.3</name>
+  <description>bitdreamit-astm v3.0.3 verification channel. Listens on TCP 3600.</description>
+  <revision>1</revision>
+  <sourceConnector version="4.5.0">
+    <metadata>
+      <enabled>true</enabled>
+      <lastModified>
+        <time>1700000000000</time>
+        <tz>UTC</tz>
+      </lastModified>
+    </metadata>
+    <name>sourceConnector</name>
+    <properties class="com.bitdreamit.connect.astm.AstmReceiverProperties">
+      <pluginProperties>
+        <property name="driver_log_level">INFO</property>
+        <property name="extension_log_level">INFO</property>
+      </pluginProperties>
+      <!-- NEW v3.0.2 fields (already populated so no migration needed) -->
+      <transportMode>TCP_SERVER</transportMode>
+      <host>0.0.0.0</host>
+      <port>3600</port>
+      <connectionTimeout>30000</connectionTimeout>
+      <serialPort>COM1</serialPort>
+      <baudRate>9600</baudRate>
+      <dataBits>8</dataBits>
+      <stopBits>1</stopBits>
+      <parity>0</parity>
+      <flowControl>0</flowControl>
+      <charsetName>windows-1252</charsetName>
+      <readTimeout>5000</readTimeout>
+      <writeTimeout>5000</writeTimeout>
+      <useEnqAck>true</useEnqAck>
+      <useChecksum>true</useChecksum>
+      <maxRetries>3</maxRetries>
+      <maxFrameSize>240</maxFrameSize>
+      <interFrameDelay>100</interFrameDelay>
+      <!-- LEGACY v2.4.2 fields (kept for migration test) -->
+      <serverMode>true</serverMode>
+      <allInterfaces>true</allInterfaces>
+      <addressBind>0.0.0.0</addressBind>
+      <localPort>3600</localPort>
+      <remoteAddress>127.0.0.1</remoteAddress>
+      <remotePort>3600</remotePort>
+      <astmProtocol>ELECSYS</astmProtocol>
+      <protocol>ASTM</protocol>
+      <sourceConnectorProperties>
+        <queueProperties>
+          <sendAck>false</sendAck>
+          <queueSize>1000</queueSize>
+          <queueEnabled>false</queueEnabled>
+          <sendResponseOnFailure>false</sendResponseOnFailure>
+        </queueProperties>
+        <processingProperties>
+          <threadCount>1</threadCount>
+          <queueThreadCount>1</queueThreadCount>
+        </processingProperties>
+      </sourceConnectorProperties>
+    </properties>
+    <transformer version="4.5.0">
+      <steps/>
+    </transformer>
+    <filter version="4.5.0">
+      <table>
+        <row>
+          <name>Message</name>
+          <operator>ACCEPT</operator>
+        </row>
+      </table>
+    </filter>
+    <transportName>astm</transportName>
+    <mode>SOURCE</mode>
+  </sourceConnector>
+  <destinationConnectors>
+    <destinationConnector version="4.5.0">
+      <metadata>
+        <enabled>true</enabled>
+        <lastModified>
+          <time>1700000000000</time>
+          <tz>UTC</tz>
+        </lastModified>
+      </metadata>
+      <name>WriteToFile</name>
+      <properties version="4.5.0" class="com.mirth.connect.connectors.file.FileDispatcherProperties">
+        <pluginProperties/>
+        <scheme>file</scheme>
+        <host>/tmp/astm-output</host>
+        <outputPattern>${date.get('yyyyMMdd-HHmmssSSS')}-${messageId}.txt</outputPattern>
+        <outputAppend>false</outputAppend>
+        <writeType>ASCII</writeType>
+        <encoding>UTF-8</encoding>
+        <outputResult>${message.encodedData}</outputResult>
+        <outputPrepend></outputPrepend>
+        <outputPostpend></outputPostpend>
+        <template>${message.encodedData}</template>
+        <destinationConnectorProperties>
+          <queueEnabled>false</queueEnabled>
+          <sendFirst>false</sendFirst>
+          <retryCount>0</retryCount>
+          <retryInterval>10000</retryInterval>
+        </destinationConnectorProperties>
+      </properties>
+      <transformer version="4.5.0">
+        <steps/>
+      </transformer>
+      <filter version="4.5.0">
+        <table>
+          <row>
+            <name>Message</name>
+            <operator>ACCEPT</operator>
+          </row>
+        </table>
+      </filter>
+      <transportName>file</transportName>
+      <mode>DESTINATION</mode>
+    </destinationConnector>
+  </destinationConnectors>
+  <preprocessingScript>// No preprocessing needed
+return message;</preprocessingScript>
+  <postprocessingScript>// No postprocessing needed
+return;</postprocessingScript>
+  <deployScript>// No deploy script needed
+return;</deployScript>
+  <undeployScript>// No undeploy script needed
+return;</undeployScript>
+  <properties>
+    <property name="initialState">Started</property>
+    <property name="storeFiltered">false</property>
+    <property name="encryptData">false</property>
+    <property name="removeFiltered">true</property>
+    <property name="synchronous">true</property>
+    <property name="maxQueueAge">86400000</property>
+  </properties>
+  <enabled>true</enabled>
+  <version>4.5.0</version>
+</channel>
