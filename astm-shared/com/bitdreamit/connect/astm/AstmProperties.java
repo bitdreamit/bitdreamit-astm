@@ -7,6 +7,11 @@ import com.mirth.connect.donkey.util.DonkeyElement;
 import com.mirth.connect.donkey.util.purge.PurgeUtil;
 import com.thoughtworks.xstream.annotations.XStreamAlias;
 
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+
 import java.util.Map;
 import java.util.Objects;
 
@@ -218,6 +223,153 @@ public abstract class AstmProperties extends ConnectorProperties {
     public void migrate3_6_0(DonkeyElement element) {}
     public void migrate3_7_0(DonkeyElement element) {}
 
+    /**
+     * FIX (Bug #1): v2.4.2 channels store TCP config as serverMode/localPort/
+     * remoteAddress/remotePort. v3.0.2 introduced transportMode/host/port.
+     * Without this migration, every existing channel silently resets to
+     * TCP_CLIENT mode pointing at the default host/port — completely wrong.
+     *
+     * This method reads the old XML elements (if present) and writes the new
+     * ones (if missing). Idempotent — channels already on v3.0.2 format are
+     * not affected.
+     */
+    public void migrate4_4_0(DonkeyElement element) {
+        super.migrate4_4_0(element);
+    }
+
+    public void migrate4_5_0(DonkeyElement element) {
+        super.migrate4_5_0(element);
+        migrateV2ToV3Fields(element);
+    }
+
+    /**
+     * Core migration logic — also called from migrate4_4_0 to be safe.
+     * Reads v2.4.2 fields and writes v3.0.2 fields if missing.
+     *
+     * IMPORTANT: This uses the standard org.w3c.dom.Element API (via
+     * DonkeyElement.getElement()) rather than DonkeyElement's own helper
+     * methods (getChild, getStringValue, addChild, setStringValue, etc.)
+     * because the DonkeyElement API surface has changed across Mirth Connect
+     * versions. The DOM API is part of the JVM standard library and is
+     * stable across all Mirth versions (3.8.0 -> 26.x).
+     */
+    protected void migrateV2ToV3Fields(DonkeyElement element) {
+        // Get the underlying DOM Element — DonkeyElement.getElement() exists in all Mirth versions.
+        Element root = element.getElement();
+        Document doc = root.getOwnerDocument();
+
+        // 1. transportMode
+        Element tmEl = getChildElement(root, "transportMode");
+        if (tmEl == null || isBlank(tmEl.getTextContent())) {
+            String serverModeStr = getChildText(root, "serverMode", "true");
+            boolean wasServerMode = Boolean.parseBoolean(serverModeStr);
+            String newTransportMode = wasServerMode ? "TCP_SERVER" : "TCP_CLIENT";
+            if (tmEl == null) {
+                tmEl = doc.createElement("transportMode");
+                root.appendChild(tmEl);
+            }
+            tmEl.setTextContent(newTransportMode);
+            this.transportMode = wasServerMode ? TransportMode.TCP_SERVER : TransportMode.TCP_CLIENT;
+        }
+
+        // 2. host
+        Element hostEl = getChildElement(root, "host");
+        if (hostEl == null || isBlank(hostEl.getTextContent())) {
+            boolean serverMode = Boolean.parseBoolean(getChildText(root, "serverMode", "true"));
+            String newHost;
+            if (serverMode) {
+                // For server mode: use addressBind (or "0.0.0.0" if allInterfaces)
+                boolean allInterfaces = Boolean.parseBoolean(getChildText(root, "allInterfaces", "true"));
+                if (allInterfaces) {
+                    newHost = "0.0.0.0";
+                } else {
+                    newHost = getChildText(root, "addressBind", "0.0.0.0");
+                }
+            } else {
+                // For client mode: use remoteAddress
+                newHost = getChildText(root, "remoteAddress", "127.0.0.1");
+            }
+            if (hostEl == null) {
+                hostEl = doc.createElement("host");
+                root.appendChild(hostEl);
+            }
+            hostEl.setTextContent(newHost);
+            this.host = newHost;
+        }
+
+        // 3. port
+        Element portEl = getChildElement(root, "port");
+        if (portEl == null || isBlank(portEl.getTextContent())) {
+            boolean serverMode = Boolean.parseBoolean(getChildText(root, "serverMode", "true"));
+            String portStr = serverMode
+                ? getChildText(root, "localPort", "3600")
+                : getChildText(root, "remotePort", "3600");
+            int newPort = 3600;
+            try {
+                if (!isBlank(portStr)) {
+                    newPort = Integer.parseInt(portStr.trim());
+                }
+            } catch (NumberFormatException e) {
+                // keep default
+            }
+            if (portEl == null) {
+                portEl = doc.createElement("port");
+                root.appendChild(portEl);
+            }
+            portEl.setTextContent(String.valueOf(newPort));
+            this.port = newPort;
+        }
+
+        // 4. charsetName
+        //    v2.4.2 hardcoded windows-1252 / CP-1252 — preserve that behavior
+        //    for upgraded channels so character decoding doesn't break.
+        Element charsetEl = getChildElement(root, "charsetName");
+        if (charsetEl == null || isBlank(charsetEl.getTextContent())) {
+            String defaultCharset = "windows-1252";
+            if (charsetEl == null) {
+                charsetEl = doc.createElement("charsetName");
+                root.appendChild(charsetEl);
+            }
+            charsetEl.setTextContent(defaultCharset);
+            this.charsetName = defaultCharset;
+        }
+    }
+
+    // ========== DOM HELPER METHODS (standard org.w3c.dom API — works on every JVM) ==========
+
+    /**
+     * Find the first direct child Element with the given name. Returns null
+     * if no such child exists.
+     */
+    private static Element getChildElement(Element parent, String name) {
+        NodeList children = parent.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node n = children.item(i);
+            if (n.getNodeType() == Node.ELEMENT_NODE && n.getNodeName().equals(name)) {
+                return (Element) n;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Get the trimmed text content of the first direct child Element with the
+     * given name. Returns the provided defaultValue if the child doesn't exist
+     * or has empty/blank text.
+     */
+    private static String getChildText(Element parent, String name, String defaultValue) {
+        Element child = getChildElement(parent, name);
+        if (child == null) {
+            return defaultValue;
+        }
+        String text = child.getTextContent();
+        return isBlank(text) ? defaultValue : text.trim();
+    }
+
+    /** True if s is null, empty, or contains only whitespace. */
+    private static boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
+    }
 
     // ========== EQUALS & HASHCODE ==========
     @Override

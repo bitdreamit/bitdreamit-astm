@@ -7,6 +7,7 @@ import com.mirth.connect.donkey.server.channel.SourceConnector;
 import com.mirth.connect.server.controllers.ControllerFactory;
 import com.mirth.connect.server.controllers.EventController;
 import com.mirth.connect.donkey.server.event.ConnectionStatusEvent;
+import com.bitdreamit.astm.asyncastm.AsyncAstmDriver;
 import com.bitdreamit.astm.asyncastm.service.states.callback.AstmConnectionStatus;
 import com.bitdreamit.astm.asyncastm.service.states.callback.AstmStatusCallback;
 import org.apache.log4j.Logger;

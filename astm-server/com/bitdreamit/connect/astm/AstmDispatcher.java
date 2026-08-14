@@ -198,6 +198,8 @@ public class AstmDispatcher extends DestinationConnector {
             byte[] data = payload.getBytes(Charset.forName(props.getCharsetName()));
 
             // Wait for driver to be ready, honoring the configured sendTimeout.
+            // Note: getSendTimeout() lives on AstmDispatcherProperties, not on the
+            // AstmProperties base class. Cast to the concrete subtype to access it.
             long sendTimeoutMs = 20000;
             try {
                 if (props instanceof AstmDispatcherProperties) {
@@ -209,7 +211,6 @@ public class AstmDispatcher extends DestinationConnector {
             } catch (NumberFormatException ignored) {
                 // keep default 20000 ms
             }
-
             long deadline = System.currentTimeMillis() + sendTimeoutMs;
             while (System.currentTimeMillis() < deadline) {
                 if (astmService != null && astmService.getDriver() != null

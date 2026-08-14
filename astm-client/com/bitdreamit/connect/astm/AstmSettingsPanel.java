@@ -2,6 +2,7 @@ package com.bitdreamit.connect.astm;
 
 import com.mirth.connect.client.ui.AbstractSettingsPanel;
 import com.mirth.connect.donkey.model.channel.ConnectorProperties;
+import com.mirth.connect.donkey.util.DonkeyElement;
 import net.miginfocom.swing.MigLayout;
 
 import javax.swing.*;
@@ -133,7 +134,18 @@ public class AstmSettingsPanel extends AbstractSettingsPanel {
         return panel;
     }
 
+    // ===== Required AbstractSettingsPanel methods =====
+    public ConnectorProperties getProperties() {
+        return new AstmProperties() {
+            @Override public void migrate3_0_1(DonkeyElement e) {}
+            @Override public void migrate3_0_2(DonkeyElement e) {}
+            @Override public void migrate4_4_0(DonkeyElement e) { super.migrate4_4_0(e); }
+            @Override public void migrate4_5_0(DonkeyElement e) { super.migrate4_5_0(e); }
+        };
+    }
+
     public void setProperties(ConnectorProperties properties) {}
+    public ConnectorProperties getDefaults() { return getProperties(); }
     public boolean checkProperties(ConnectorProperties properties, boolean highlight) { return true; }
     public void resetInvalidProperties() {}
     public void doRefresh() {}
