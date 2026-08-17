@@ -1,97 +1,95 @@
-# bitdreamit-astm v3.0.3 — Simple Fix
+# bitdreamit-astm v3.0.3 — IntelliJ IDEA Project
 
-You had v2.4.2 working for 4 years. You upgraded to v3.0.2 and channels silently
-stopped working. This package fixes that.
+Open this folder in IntelliJ IDEA. Click Build → Build Artifacts → Build All.
+Get 4 JARs in `sign/bitdreamit-astm/`.
 
-## What was wrong (the simple version)
+## Quick start (5 steps)
 
-3 simple bugs in v3.0.2 caused all your trouble:
+1. **Set up `mirth-libs\`** in the parent folder of this project — see `BUILD.md` Step 1.
+   - e.g., `D:\Java\mirth-libs\` (shared with your other Mirth plugin projects)
+   - e.g., `D:\Java\bitdreamit-astm-3.0.3-full\` (this project, sibling of mirth-libs)
+2. **Open this folder in IntelliJ IDEA** (File → Open → select `bitdreamit-astm-3.0.3-full/`).
+3. **Configure JDK** — File → Project Structure → Project SDK → set to JDK 1.8 or 17.
+4. **Build → Build Artifacts → Build All**.
+5. **Sign the plugin** — see `BUILD.md` step 7.
 
-1. **Channels lost their settings on upgrade.**
-   The migration code was empty. Channels that were TCP-Server-on-port-3600
-   became TCP-Client-to-127.0.0.1:5004 after the upgrade.
-
-2. **Reader thread crashed silently when a client connected.**
-   The code started the reader thread before the socket existed. The thread
-   crashed on null and died. Channel showed "Started" but processed nothing.
-
-3. **No status updates reached Mirth.**
-   The driver never sent connection status back to Mirth. Dashboard stayed
-   blank — the "channel not enable" symptom.
-
-Plus: connection failures were logged at DEBUG (invisible at default log level).
-
-## What this fix does
-
-12 files patched. The 3 critical bugs above are fixed. Plus:
-
-- **Auto-recovery with backoff**: when USB-COM is unplugged or analyzer drops,
-  the channel waits 5s, 10s, 20s, 40s, 60s and retries. When the cable is
-  plugged back in, the channel automatically returns to normal. NO manual
-  restart needed.
-
-- **COM port name change works**: when you edit the channel's COM port in
-  Mirth Administrator (e.g., COM3 → COM5) and click Save, the channel picks
-  up the new port on the next reconnect cycle (within 5-60s). NO restart needed.
-
-- **Visible logging**: connection failures now log at WARN/ERROR level so you
-  can see them in the Mirth log.
-
-## Files in this package
+## What you get after build
 
 ```
-bitdreamit-astm-3.0.3-full.zip         <- full source (build this)
-bitdreamit-astm-3.0.3-patched.zip       <- patch-only (drop into v3.0.2 source)
-bitdreamit-astm-DIAGNOSTIC.md           <- detailed bug-by-bug explanation
-bitdreamit-astm-RELEASE-NOTES.md        <- feature list + migration paths
+sign/bitdreamit-astm/
+├── plugin.xml                  (already there)
+├── source.xml                   (already there)
+├── destination.xml              (already there)
+├── mykeystore.jks               (already there — for signing)
+├── astm-shared.jar              <- BUILT
+├── astm-server.jar              <- BUILT
+├── astm-client.jar              <- BUILT
+└── lib/
+    ├── jSerialComm-2.10.4.jar   (already there — bundled serial library)
+    └── astm-async.jar        <- BUILT
 ```
 
-## How to install (5 steps)
+## Module structure (4 modules, all in IDEA)
 
-1. Unzip `bitdreamit-astm-3.0.3-full.zip`
-2. Open in IntelliJ IDEA → build the 4 JARs (`AsyncAstm-3.2.jar`, `astm-shared.jar`, `astm-server.jar`, `astm-client.jar`)
-3. Copy them into `sign/bitdreamit-astm/` (keep `lib/jSerialComm-2.10.4.jar`)
-4. Sign the plugin with your existing keystore (`mykeystore.jks`)
-5. Upload to Mirth Connect via Extensions → Install
+| Module | Source folder | Output JAR | Depends on |
+|---|---|---|---|
+| `astm-async` | `astm-async/` | `sign/bitdreamit-astm/lib/astm-async.jar` | Mirth Connect, jSerialComm |
+| `astm-shared` | `astm-shared/` | `sign/bitdreamit-astm/astm-shared.jar` | Mirth Connect |
+| `astm-server` | `astm-server/` | `sign/bitdreamit-astm/astm-server.jar` | astm-async + astm-shared + Mirth Connect + jSerialComm |
+| `astm-client` | `astm-client/` | `sign/bitdreamit-astm/astm-client.jar` | astm-shared + Mirth Connect + jSerialComm |
 
-## How to verify it works
+## Documentation
 
-After installing + restarting Mirth:
+- **`BUILD.md`** — detailed step-by-step build instructions + troubleshooting.
+- **`lib/README.md`** — exactly which Mirth Connect JARs to copy into `lib/`.
+- **`DIAGNOSTIC.md`** — root-cause analysis of all bugs fixed in v3.0.3.
+- **`RELEASE-NOTES.md`** — feature list, migration paths, supported versions.
+- **`tools/README.md`** — how to use the analyzer simulator + test channel.
 
-1. **Open an existing ASTM channel** (one you had under v2.4.2).
-   The transport mode and port should now be correct (TCP Server, port 3600)
-   instead of the wrong defaults (TCP Client, 127.0.0.1, 5004).
-   Click Save to commit the migration.
+## What was fixed in v3.0.3 (vs v3.0.2)
 
-2. **Start the channel.**
-   The dashboard should show "Listening on 0.0.0.0:3600".
+3 critical bugs caused your "channel not enable, silent failure":
 
-3. **Test with the analyzer simulator** (in `tools/`):
-   ```bash
-   python3 tools/analyzer-simulator.py --host 127.0.0.1 --port 3600
-   ```
-   You should see ACKs for every frame, and a new message in the Mirth
-   Messages view.
+1. **Migration was empty** — v2.4.2 channels lost their settings on upgrade.
+2. **Reader thread crashed on connect** — started before socket existed.
+3. **No status callback** — Mirth dashboard stayed blank.
+
+Plus: connection failures were invisible (logged at DEBUG).
+
+## Auto-recovery (no manual channel restart)
+
+When USB-COM is unplugged or analyzer drops:
+- Channel waits 5s → 10s → 20s → 40s → 60s (exponential backoff)
+- Retries automatically
+- When cable comes back, channel returns to normal
+- Logs every attempt at WARN level (visible in Mirth log)
+
+When you change the COM port in Mirth Administrator:
+- Edit channel → change COM port → Save
+- Within 1 minute, the channel picks up the new port
+- NO restart needed
+
+See `DIAGNOSTIC.md` Bug #15 for details.
 
 ## For lab staff (no IT needed)
 
-Once this fix is installed, lab staff just need to know:
+- If analyzer isn't sending data: wait 1-2 minutes. Channel auto-recovers.
+- If USB cable was moved to a different port: edit channel → change COM port → Save.
+  Within 1 minute it picks up the new port.
 
-- **If the analyzer isn't sending data**: wait 1-2 minutes. The channel
-  auto-recovers. If it doesn't, check that:
-  - The analyzer is powered on
-  - The USB cable is plugged in (firmly)
-  - The analyzer's screen shows "Ready" or "Transmit"
+## Files in this package
 
-- **If the USB cable was moved to a different port**:
-  Edit the channel in Mirth Administrator → change the COM port → Save.
-  Within 1 minute the channel picks up the new port. NO restart needed.
-
-## What's NOT in this fix (kept simple)
-
-- No watchdog thread (over-engineered for a lab)
-- No Python recovery tools (lab staff use Mirth Administrator)
-- No custom log viewer (use Mirth's built-in log viewer)
-- No idle-timeout property (the standard 5s/10s/20s/40s/60s backoff is enough)
-
-If you need any of those later, ask and I'll add them back.
+| Path | Purpose |
+|---|---|
+| `README.md` | this file |
+| `BUILD.md` | how to build the 4 JARs in IntelliJ IDEA |
+| `DIAGNOSTIC.md` | bug-by-bug explanation of all fixes |
+| `RELEASE-NOTES.md` | feature list, migration, supported versions |
+| `.idea/` | IntelliJ IDEA project config (modules, libraries, artifacts) |
+| `astm-async/` | Module 1 source + .iml |
+| `astm-shared/` | Module 2 source + .iml |
+| `astm-server/` | Module 3 source + .iml |
+| `astm-client/` | Module 4 source + .iml |
+| `lib/` | drop Mirth Connect JARs here (see lib/README.md) |
+| `sign/bitdreamit-astm/` | build output (4 JARs go here) |
+| `tools/` | analyzer-simulator.py + test channel XML |

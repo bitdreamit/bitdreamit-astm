@@ -104,7 +104,7 @@ public void migrate4_5_0(DonkeyElement element) {
 
 ### Bug #2 — Reader thread NPE in TCP server mode (CRITICAL — kills the listener silently)
 
-**File:** `AsyncAstm-3.2/com/bitdreamit/astm/asyncastm/service/connection/AstmTcpServerConnection.java`
+**File:** `astm-async/com/bitdreamit/astm/asyncastm/service/connection/AstmTcpServerConnection.java`
 **Location:** `doConnect()` — `this.initialize();` is called before `this.serverSocket.accept();`
 
 **Root cause:**
@@ -144,7 +144,7 @@ public final void doConnect() throws IOException {
 
 ### Bug #3 — Reader thread NPE in TCP client mode (CRITICAL — same as #2, different file)
 
-**File:** `AsyncAstm-3.2/com/bitdreamit/astm/asyncastm/service/connection/AstmTcpClientConnection.java`
+**File:** `astm-async/com/bitdreamit/astm/asyncastm/service/connection/AstmTcpClientConnection.java`
 **Location:** `doConnect()` — `this.initialize();` is called before `this.socket = new Socket(...)`
 
 **Root cause:** identical to Bug #2 but on the client side. The reader thread starts before `socket` is assigned, NPEs on `socket.getInputStream()`, and dies silently.
@@ -256,7 +256,7 @@ astmService.init(properties, cb);   // ← callback passed in
 
 ### Bug #5 — Silent connection failure (CRITICAL — explains "no log error shown")
 
-**File:** `AsyncAstm-3.2/com/bitdreamit/astm/asyncastm/service/connection/AstmTcpClientConnection.java`
+**File:** `astm-async/com/bitdreamit/astm/asyncastm/service/connection/AstmTcpClientConnection.java`
 **Location:** `doConnect()` retry loop
 
 **Root cause:**
@@ -284,7 +284,7 @@ Combined with Bug #4, the channel is a black hole — no log, no dashboard event
 
 ### Bug #6 — `isConnected()` lies about connection state (HIGH — causes dispatcher hangs)
 
-**File:** `AsyncAstm-3.2/com/bitdreamit/astm/asyncastm/AsyncAstmTcpDriver.java` and `AsyncAstmSerialDriver.java`
+**File:** `astm-async/com/bitdreamit/astm/asyncastm/AsyncAstmTcpDriver.java` and `AsyncAstmSerialDriver.java`
 **Location:** `isConnected()`
 
 **Root cause:**
@@ -372,7 +372,7 @@ This matches what a v2.4.2 user would have had out of the box and makes the migr
 
 ### Bug #9 — `AstmState.run()` does not catch `RuntimeException` (MEDIUM — serial failures kill the state machine silently)
 
-**File:** `AsyncAstm-3.2/com/bitdreamit/astm/asyncastm/service/states/AstmState.java`
+**File:** `astm-async/com/bitdreamit/astm/asyncastm/service/states/AstmState.java`
 **Location:** `run()` — only catches `InterruptedException` and `EOFException`
 
 **Root cause:**
@@ -442,9 +442,9 @@ Two problems:
 
 ### Bug #15 — No USB-COM unplug/hang recovery (HIGH — channel stays dead after USB yank)
 
-**File:** `AsyncAstm-3.2/com/bitdreamit/astm/asyncastm/service/states/ReconnectState.java`
-**File:** `AsyncAstm-3.2/com/bitdreamit/astm/asyncastm/service/states/ConnectState.java`
-**File:** `AsyncAstm-3.2/com/bitdreamit/astm/asyncastm/service/connection/AstmSerialConnection.java`
+**File:** `astm-async/com/bitdreamit/astm/asyncastm/service/states/ReconnectState.java`
+**File:** `astm-async/com/bitdreamit/astm/asyncastm/service/states/ConnectState.java`
+**File:** `astm-async/com/bitdreamit/astm/asyncastm/service/connection/AstmSerialConnection.java`
 
 **Root cause:**
 
@@ -492,8 +492,8 @@ If both messages appear in the Mirth Messages view, recovery works. If only the 
 ### Bug #16 — No auto-recovery when USB-COM hangs or COM port is changed (HIGH — lab staff cannot recover)
 
 **File:** NEW `astm-server/com/bitdreamit/connect/astm/AstmWatchdog.java`
-**File:** `AsyncAstm-3.2/.../AsyncAstmDriver.java` (interface — added `forceReconnect()` + `getCurrentTransportName()`)
-**File:** `AsyncAstm-3.2/.../AsyncAstmTcpDriver.java`, `AsyncAstmSerialDriver.java` (implementations)
+**File:** `astm-async/.../AsyncAstmDriver.java` (interface — added `forceReconnect()` + `getCurrentTransportName()`)
+**File:** `astm-async/.../AsyncAstmTcpDriver.java`, `AsyncAstmSerialDriver.java` (implementations)
 **File:** `astm-server/.../AstmReceiver.java`, `AstmDispatcher.java` (start/stop watchdog)
 **File:** `astm-shared/.../AstmProperties.java` (added `idleTimeoutMs` field)
 **Tool:** `tools/lab-recovery-tool.py` (one-click fallback for lab staff)
@@ -594,12 +594,12 @@ The patched source files are in `bitdreamit-astm-3.0.3-patched.zip`. Apply them 
 | `astm-shared/.../AstmProperties.java` | Migration logic in `migrate4_5_0()`. Default port → 3600, host → 0.0.0.0, transportMode → TCP_SERVER. | #1, #8 |
 | `astm-shared/.../AstmReceiverProperties.java` | Override `migrate4_5_0()` to call super. | #1 |
 | `astm-shared/.../AstmDispatcherProperties.java` | Override `migrate4_5_0()` to call super. | #1 |
-| `AsyncAstm-3.2/.../AstmTcpServerConnection.java` | Move `initialize()` after `accept()`. | #2 |
-| `AsyncAstm-3.2/.../AstmTcpClientConnection.java` | Move `initialize()` after `new Socket()`. Add WARN/ERROR logging on retry. | #3, #5 |
-| `AsyncAstm-3.2/.../AsyncAstmTcpDriver.java` | Fix `isConnected()` to check actual state. | #6 |
-| `AsyncAstm-3.2/.../AsyncAstmSerialDriver.java` | Fix `isConnected()` similarly. | #6 |
-| `AsyncAstm-3.2/.../AstmSerialConnection.java` | Throw `IOException` instead of `RuntimeException` on port-open failure. | #9 |
-| `AsyncAstm-3.2/.../AstmState.java` | Catch `RuntimeException`, transition to Reconnect. | #9 |
+| `astm-async/.../AstmTcpServerConnection.java` | Move `initialize()` after `accept()`. | #2 |
+| `astm-async/.../AstmTcpClientConnection.java` | Move `initialize()` after `new Socket()`. Add WARN/ERROR logging on retry. | #3, #5 |
+| `astm-async/.../AsyncAstmTcpDriver.java` | Fix `isConnected()` to check actual state. | #6 |
+| `astm-async/.../AsyncAstmSerialDriver.java` | Fix `isConnected()` similarly. | #6 |
+| `astm-async/.../AstmSerialConnection.java` | Throw `IOException` instead of `RuntimeException` on port-open failure. | #9 |
+| `astm-async/.../AstmState.java` | Catch `RuntimeException`, transition to Reconnect. | #9 |
 | `astm-server/.../AstmService.java` | Restore static whitelist initializer. Accept `AstmStatusCallback` in `init()`. | #4, #7 |
 | `astm-server/.../AstmReceiver.java` | Construct status callback and pass to `AstmService.init(props, cb)`. | #4 |
 | `astm-server/.../AstmDispatcher.java` | Same callback wiring. Use `sendTimeout` from properties. Use `poll()` instead of `put()`. | #4, #10 |
@@ -616,7 +616,7 @@ The patched source is laid out to match the original IntelliJ IDEA module struct
 ```
 bitdreamit-astm-3.0.3-patched/
 ├── README.md
-├── AsyncAstm-3.2/         (AsyncAstm-3.2.jar sources)
+├── astm-async/         (astm-async.jar sources)
 ├── astm-client/            (astm-client.jar sources)
 ├── astm-server/            (astm-server.jar sources)
 └── astm-shared/            (astm-shared.jar sources)
@@ -626,7 +626,7 @@ To build:
 
 1. Open the original `bitdreamit-astm-main` project in IntelliJ IDEA.
 2. Replace the files listed above with the patched versions.
-3. Build artifacts: `AsyncAstm-3.2.jar`, `astm-shared.jar`, `astm-server.jar`, `astm-client.jar`.
+3. Build artifacts: `astm-async.jar`, `astm-shared.jar`, `astm-server.jar`, `astm-client.jar`.
 4. Copy the four JARs into `sign/bitdreamit-astm/` (overwriting the old ones).
 5. Make sure `lib/jSerialComm-2.10.4.jar` is still present (unchanged).
 6. Zip the `sign/bitdreamit-astm/` folder and sign the plugin with your keystore (`mykeystore.jks` / `mykeystore.p12` are already in the sign folder).

@@ -2,7 +2,10 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/bitdreamit-astm.iml" filepath="$PROJECT_DIR$/bitdreamit-astm.iml" />
+      <module fileurl="file://$PROJECT_DIR$/astm-async/astm-async.iml" filepath="$PROJECT_DIR$/astm-async/astm-async.iml" />
+      <module fileurl="file://$PROJECT_DIR$/astm-shared/astm-shared.iml" filepath="$PROJECT_DIR$/astm-shared/astm-shared.iml" />
+      <module fileurl="file://$PROJECT_DIR$/astm-server/astm-server.iml" filepath="$PROJECT_DIR$/astm-server/astm-server.iml" />
+      <module fileurl="file://$PROJECT_DIR$/astm-client/astm-client.iml" filepath="$PROJECT_DIR$/astm-client/astm-client.iml" />
     </modules>
   </component>
 </project>

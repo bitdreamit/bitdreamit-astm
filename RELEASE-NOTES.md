@@ -218,7 +218,7 @@ These features present in v2.4.2 are intentionally gone in v3.0.3:
 1. Build v3.0.3.
 2. Stop Mirth Connect.
 3. Replace the four JARs in `extensions/bitdreamit-astm/`:
-   - `lib/AsyncAstm-3.2.jar`
+   - `lib/astm-async.jar`
    - `astm-shared.jar`
    - `astm-server.jar`
    - `astm-client.jar`
@@ -283,9 +283,9 @@ sign/bitdreamit-astm/
 ├── astm-client.jar              (~41 KB, source + UI panels)
 ├── astm-shared.jar              (~19 KB, properties classes)
 ├── astm-server.jar              (~25 KB, source + destination connectors + AstmService)
-├── AsyncAstm-3.2.jar            (~65 KB, top-level — kept for backward compat with v2.4.2 references)
+├── astm-async.jar            (~65 KB, top-level — kept for backward compat with v2.4.2 references)
 └── lib/
-    ├── AsyncAstm-3.2.jar        (~65 KB, the actual driver + state machine)
+    ├── astm-async.jar        (~65 KB, the actual driver + state machine)
     └── jSerialComm-2.10.4.jar   (~877 KB, serial port library)
 ```
 

@@ -11,7 +11,7 @@
 	<library type="CLIENT" path="astm-client.jar" />
 	<library type="SHARED" path="astm-shared.jar" />
 	<library type="SERVER" path="astm-server.jar" />
-	<library type="SERVER" path="lib/AsyncAstm-3.2.jar" />
+	<library type="SERVER" path="lib/astm-async.jar" />
 	<library type="SERVER" path="lib/jSerialComm-2.10.4.jar" />
 	<transformers></transformers>
 	<protocol>astm</protocol>
