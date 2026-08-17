@@ -440,6 +440,55 @@ Two problems:
 
 ---
 
+### Bug #15 — No USB-COM unplug/hang recovery (HIGH — channel stays dead after USB yank)
+
+**File:** `AsyncAstm-3.2/com/bitdreamit/astm/asyncastm/service/states/ReconnectState.java`
+**File:** `AsyncAstm-3.2/com/bitdreamit/astm/asyncastm/service/states/ConnectState.java`
+**File:** `AsyncAstm-3.2/com/bitdreamit/astm/asyncastm/service/connection/AstmSerialConnection.java`
+
+**Root cause:**
+
+When a USB-RS232 adapter is unplugged or hangs:
+
+1. `jSerialComm.InputStream.read()` returns -1 (EOF) — eventually, after the 5s read timeout.
+2. The reader thread in `AbstractAstmConnection` sets `lastByte = -1`, releases the ready semaphore, and exits.
+3. `IdleState`'s next `readByteImpl()` call sees `lastByte == -1` and throws `EOFException`.
+4. `AstmState.run()` catches `EOFException` and transitions to `ReconnectState`.
+5. **`ReconnectState.execute()` closes the connection and immediately transitions back to `ConnectState`** — with NO delay, NO backoff, NO logging.
+6. `ConnectState.execute()` calls `doConnect()` → `openPort()` fails (USB still out) → throws `IOException` → `ReconnectState` again.
+7. Tight CPU-burning loop. No log output (because all of this happens at DEBUG or below). Mirth dashboard shows nothing useful.
+
+The user's symptom: "USB cable was unplugged for 5 minutes, plugged back in, channel never resumed receiving LIS data."
+
+**Fix applied:**
+
+`ReconnectState.execute()` now:
+- Sleeps with exponential backoff: 5s → 10s → 20s → 40s → 60s (cap)
+- Logs each attempt at WARN level (visible at default Mirth log threshold)
+- Logs every 5th attempt at ERROR level (for ops dashboards)
+- The status callback (registered by Bug #4 fix) dispatches `RECONNECTING` → "Trying to reconnect" on each entry, so the dashboard reflects the ongoing recovery.
+
+`ConnectState.execute()` now calls `ReconnectState.resetAttempts()` after `doConnect()` succeeds, so the next failure starts backoff fresh from 5s (not from where it left off). This means: after a successful recovery, the channel behaves as if freshly started.
+
+`AstmSerialConnection` improvements:
+- `doConnect()` now provides helpful hints in the error message when `openPort()` fails (different hints for `COM*`, `/dev/ttyUSB*`, `/dev/ttyACM*`, `/dev/ttyS*`).
+- `doGetInputStream()` / `doGetOutputStream()` now check `serialPort.isOpen()` before returning, throwing a clear IOException if the USB was unplugged.
+- New `isOpen()` public method allows external watchdogs to query port health.
+- `close()` is now defensive — if jSerialComm throws while closing an already-gone port (common after USB unplug), it logs at DEBUG and continues rather than propagating.
+
+**Verification:**
+
+Run `tools/usb-unplug-simulator.py` against a virtual serial port pair (`socat`) or a real null-modem cable. The simulator:
+1. Opens the port, sends one ASTM message → Mirth receives it.
+2. Abruptly closes the port (simulates USB yank, no EOT sent).
+3. Waits 15 seconds (long enough for ReconnectState to fail at least once).
+4. Reopens the port (simulates USB replug).
+5. Sends another ASTM message → Mirth should receive it WITHOUT any manual channel restart.
+
+If both messages appear in the Mirth Messages view, recovery works. If only the first appears, the recovery logic is broken.
+
+---
+
 ### Bug #11 — `AstmConnectorPanel.java` is dead code (LOW — confusing but harmless)
 
 **File:** `astm-client/com/bitdreamit/connect/astm/AstmConnectorPanel.java`
