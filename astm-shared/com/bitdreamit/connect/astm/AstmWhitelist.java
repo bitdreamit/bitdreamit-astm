@@ -15,7 +15,7 @@ public class AstmWhitelist {
 
         try {
             Method method = serializer.getClass().getMethod("allowTypes", List.class, List.class, List.class);
-            List<String> allowedTypes = new ArrayList();
+            List<String> allowedTypes = new ArrayList<>();
             allowedTypes.add(AstmReceiverProperties.class.getCanonicalName());
             allowedTypes.add(AstmDispatcherProperties.class.getCanonicalName());
             method.invoke(serializer, allowedTypes, null, null);

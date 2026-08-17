@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- ============================================================ -->
+    <!-- astm-async — ASTM driver + state machine (the engine)        -->
+    <!-- Output: sign/bitdreamit-astm/lib/astm-async.jar              -->
+    <!-- ============================================================ -->
+
+    <parent>
+        <groupId>com.bitdreamit.connect.plugins.astm</groupId>
+        <artifactId>bitdreamit-astm</artifactId>
+        <version>3.0.3</version>
+    </parent>
+
+    <artifactId>astm-async</artifactId>
+    <packaging>jar</packaging>
+
+    <name>astm-async</name>
+    <description>ASTM E1381 driver + state machine (TCP + Serial transport)</description>
+
+    <dependencies>
+        <!-- Log4j 1.2 API bridge (org.apache.log4j.Logger) -->
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-1.2-api</artifactId>
+        </dependency>
+        <!-- jSerialComm (Serial port access) -->
+        <dependency>
+            <groupId>com.fazecast</groupId>
+            <artifactId>jSerialComm</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>astm-async</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <outputDirectory>${project.basedir}/../sign/bitdreamit-astm/lib</outputDirectory>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

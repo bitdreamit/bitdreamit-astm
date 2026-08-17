@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- ============================================================ -->
+    <!-- astm-shared — Properties classes (shared by client/server)   -->
+    <!-- Output: sign/bitdreamit-astm/astm-shared.jar                 -->
+    <!-- ============================================================ -->
+
+    <parent>
+        <groupId>com.bitdreamit.connect.plugins.astm</groupId>
+        <artifactId>bitdreamit-astm</artifactId>
+        <version>3.0.3</version>
+    </parent>
+
+    <artifactId>astm-shared</artifactId>
+    <packaging>jar</packaging>
+
+    <name>astm-shared</name>
+    <description>ASTM connector properties classes (shared by client and server)</description>
+
+    <dependencies>
+        <!-- Log4j 1.2 API bridge -->
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-1.2-api</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>astm-shared</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <outputDirectory>${project.basedir}/../sign/bitdreamit-astm</outputDirectory>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
