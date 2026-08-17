@@ -18,11 +18,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * AstmReceiver — Mirth Source Connector that listens for incoming ASTM messages
  * over TCP (client or server mode) or Serial (RS-232).
  *
- * FIX (Bug #4): The v3.0.2 version never registered an AstmStatusCallback with
- * the driver, so the Mirth dashboard connector status badge stayed blank and no
- * ConnectionStatusEvent was ever dispatched — the "channel not enable" symptom.
- * Now we construct a proper callback that translates ASTM state machine status
- * changes into Mirth ConnectionStatusEvent dispatches.
+ * FIX (Bug #4): Register an AstmStatusCallback so Mirth dashboard reflects
+ * actual driver state.
+ *
+ * FIX (Bug #15): ReconnectState now has exponential backoff (5s -> 60s) and
+ * WARN logging — so when the analyzer drops or USB is unplugged, the channel
+ * automatically recovers without manual restart.
  */
 public class AstmReceiver extends SourceConnector {
     private static final Logger logger = Logger.getLogger(AstmReceiver.class);
@@ -46,18 +47,10 @@ public class AstmReceiver extends SourceConnector {
         properties = (AstmProperties) getConnectorProperties();
         astmService = new AstmService();
 
-        // FIX (Bug #4): Build the status callback BEFORE init() so the driver
-        // is constructed with the callback already attached. The callback
-        // dispatches Mirth ConnectionStatusEvents so the dashboard reflects
-        // the actual state of the ASTM driver.
         AstmStatusCallback statusCallback = buildStatusCallback(properties);
 
         try {
             astmService.init(properties, statusCallback);
-            // Start driver BEFORE setting stopped=false so the listener thread
-            // sees the ready state. If startDriver() throws (e.g., serial port
-            // cannot be opened), we mark stopped=true and rethrow so Mirth
-            // marks the channel as failed.
             astmService.startDriver();
             stopped.set(false);
             logger.info("AstmReceiver started: mode=" + properties.getTransportMode()
@@ -77,14 +70,6 @@ public class AstmReceiver extends SourceConnector {
         }
     }
 
-    /**
-     * Build an AstmStatusCallback that translates ASTM driver state changes
-     * into Mirth ConnectionStatusEvent dispatches. This is what makes the
-     * Mirth dashboard connector status badge actually update.
-     *
-     * Ported from the deprecated AstmConnectionManager logic, adapted for
-     * the new transportMode-based properties.
-     */
     private AstmStatusCallback buildStatusCallback(final AstmProperties props) {
         final EventController ec = ControllerFactory.getFactory().createEventController();
         final String channelId = getChannelId();
@@ -120,7 +105,6 @@ public class AstmReceiver extends SourceConnector {
                             info = "Receiving new message";
                             break;
                         case SENDING:
-                            // Source connector doesn't initiate sends, but report anyway.
                             type = ConnectionStatusEventType.IDLE;
                             info = "Stopping message receiving";
                             break;
@@ -135,8 +119,6 @@ public class AstmReceiver extends SourceConnector {
                         case EXITING:
                             type = ConnectionStatusEventType.IDLE;
                             info = "Disconnected";
-                            // If the state machine exits on its own (not because we stopped it),
-                            // stop the channel so Mirth marks it as stopped rather than hanging.
                             if (getCurrentState() != DeployedState.STOPPING
                                 && getCurrentState() != DeployedState.STOPPED) {
                                 try {

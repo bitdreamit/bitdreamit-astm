@@ -14,4 +14,15 @@ public interface AsyncAstmDriver {
     boolean isConnected();
     ReceivedMessage getReceivedMessage() throws InterruptedException;
     TransmissionResult sendMessage(String message) throws InterruptedException;
+
+    /**
+     * Force-close the underlying connection. The state machine will then
+     * naturally transition to ReconnectState and retry the connection using
+     * the latest properties (so a COM port name change in the channel
+     * settings takes effect on the next reconnect).
+     *
+     * Used by the simple EOFException retry loop in IdleState when the
+     * analyzer drops without sending EOT.
+     */
+    void forceReconnect();
 }

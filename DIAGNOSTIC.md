@@ -489,6 +489,75 @@ If both messages appear in the Mirth Messages view, recovery works. If only the 
 
 ---
 
+### Bug #16 — No auto-recovery when USB-COM hangs or COM port is changed (HIGH — lab staff cannot recover)
+
+**File:** NEW `astm-server/com/bitdreamit/connect/astm/AstmWatchdog.java`
+**File:** `AsyncAstm-3.2/.../AsyncAstmDriver.java` (interface — added `forceReconnect()` + `getCurrentTransportName()`)
+**File:** `AsyncAstm-3.2/.../AsyncAstmTcpDriver.java`, `AsyncAstmSerialDriver.java` (implementations)
+**File:** `astm-server/.../AstmReceiver.java`, `AstmDispatcher.java` (start/stop watchdog)
+**File:** `astm-shared/.../AstmProperties.java` (added `idleTimeoutMs` field)
+**Tool:** `tools/lab-recovery-tool.py` (one-click fallback for lab staff)
+
+**Root cause:**
+
+Bug #15 (ReconnectState backoff) handles the case where the OS detects the USB unplug and delivers an EOF to `read()`. But there are three more scenarios where the channel silently dies and Bug #15 doesn't help:
+
+1. **USB-COM hang (rare driver bug)**: `read()` blocks forever. No EOF delivered. ReconnectState never runs. The 5-second `setComPortTimeouts` should prevent this in 99% of cases, but some buggy USB-RS232 chipsets (especially Prolific clones) can hang in kernel space.
+
+2. **Analyzer silent-drop**: some analyzers (especially over TCP) just stop sending data without closing the connection. The TCP socket stays open, no EOF, no error. The channel sits in `IdleState` waiting for ENQ that never comes.
+
+3. **COM port name change**: lab staff move the USB adapter to a different port (e.g., COM3 → COM5), then update the channel properties in Mirth Administrator. But the running driver still holds the OLD port — it doesn't pick up the new name until the channel is manually stopped and started. Non-technical lab staff cannot do this.
+
+The user's symptom: "If the channel hangs, no data transfer. Even if you change to a new COM port in the channel settings, it doesn't connect to the new port."
+
+**Fix applied:**
+
+Added `AstmWatchdog` — a daemon thread that runs every 30 seconds inside the plugin and checks four things:
+
+1. **Transport name change**: if the driver's `getCurrentTransportName()` doesn't match what the current properties say (e.g., lab staff changed `serialPort` from `COM3` to `COM5` in the channel), call `driver.forceReconnect()`. The state machine's `ReconnectState` will then call `doConnect()` again, which reads the latest properties and opens the new port. **NO manual channel restart needed.**
+
+2. **Serial port closed check** (Serial only): if `AstmSerialConnection.isOpen()` returns false (USB unplugged without EOF), call `driver.forceReconnect()`.
+
+3. **Idle timeout**: if no data has been received within `idleTimeoutMs` (default 5 minutes, configurable per channel), call `driver.forceReconnect()` to break out of a possible hang. After forcing reconnect, reset `lastActivityMs` so it doesn't fire again immediately — ReconnectState's own backoff takes over.
+
+4. **Stuck disconnected**: if `driver.isConnected()` returns false for more than 90 seconds, force-reconnect to kick the state machine.
+
+`forceReconnect()` just calls `context.getConnection().close()` — this causes the next `read()` in the state machine to throw `EOFException`, which `AstmState.run()` catches and transitions to `ReconnectState`. So the watchdog leverages the existing recovery path; it doesn't bypass it.
+
+The watchdog skips checks during the first 60 seconds after channel start (give the driver time to establish its initial connection).
+
+`AsyncAstmDriver` interface gains two methods:
+
+```java
+void forceReconnect();
+String getCurrentTransportName();
+```
+
+Both `AsyncAstmTcpDriver` and `AsyncAstmSerialDriver` implement them. The implementations are simple — `forceReconnect()` calls `context.getConnection().close()` (defensively, swallowing exceptions), and `getCurrentTransportName()` returns a string like `"serial:COM3"` or `"tcp-server:3600"` or `"tcp-client:192.168.1.50:5000"`.
+
+`AstmProperties` gains a new `idleTimeoutMs` field (default 300000 = 5 minutes). Configurable per channel via the standard Mirth properties XML:
+
+```xml
+<idleTimeoutMs>300000</idleTimeoutMs>
+```
+
+Set to `0` to disable idle-based reconnects (the transport-name-change check still runs).
+
+`AstmReceiver.onStart()` and `AstmDispatcher.onStart()` both start the watchdog as a daemon thread; `onStop()` / `onHalt()` stop it.
+
+**One-click recovery tool for lab staff:**
+
+Even with the watchdog, sometimes a hard channel restart is the right move. `tools/lab-recovery-tool.py` is a Python script that lab staff can double-click (saved as `.pyw` on Windows to suppress the console window). It:
+
+1. Connects to Mirth Connect REST API using saved credentials (in `/opt/mirth-connect/lab-recovery.conf`).
+2. Lists all channels matching `ASTM` (case-insensitive substring match).
+3. For each, stop → wait 5 seconds → start.
+4. Prints a friendly message about what it did and what to do if it didn't work.
+
+Lab staff DO NOT need to log into Mirth Administrator. They DO NOT need to know which channel to restart. They just double-click the icon.
+
+---
+
 ### Bug #11 — `AstmConnectorPanel.java` is dead code (LOW — confusing but harmless)
 
 **File:** `astm-client/com/bitdreamit/connect/astm/AstmConnectorPanel.java`

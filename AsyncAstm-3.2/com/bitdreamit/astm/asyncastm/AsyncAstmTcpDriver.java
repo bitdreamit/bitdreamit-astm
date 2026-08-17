@@ -223,4 +223,20 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
         if (context == null) throw new IllegalStateException("Driver not started");
         return context.sendMessage(message);
     }
+
+    /**
+     * Force-close the underlying connection. The state machine will then
+     * naturally transition to ReconnectState and retry.
+     */
+    @Override
+    public void forceReconnect() {
+        try {
+            if (context != null && context.getConnection() != null) {
+                logger.info("Force-reconnecting TCP driver");
+                context.getConnection().close();
+            }
+        } catch (Exception e) {
+            logger.warn("Error during forceReconnect (TCP)", e);
+        }
+    }
 }

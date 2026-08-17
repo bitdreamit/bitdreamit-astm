@@ -1,4 +1,4 @@
-package com.bitdreamit.astm.asyncastm.service.connection;
+package com.bitreamit.astm.asyncastm.service.connection;
 
 import com.fazecast.jSerialComm.SerialPort;
 import org.apache.log4j.Logger;

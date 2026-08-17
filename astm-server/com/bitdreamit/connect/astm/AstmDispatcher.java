@@ -22,13 +22,12 @@ import java.nio.charset.Charset;
  * TCP (client or server mode) or Serial (RS-232).
  *
  * FIX (Bug #4): Register an AstmStatusCallback so Mirth dashboard reflects
- * actual driver state. Same pattern as AstmReceiver.
+ * actual driver state.
  *
- * FIX (Bug #10): send() previously used a hardcoded 5-second busy-wait loop
- * with a broken isConnected() check (Bug #6 — returned true immediately). Now
- * uses the configured sendTimeout property and returns Status.ERROR with a
- * clear message if the driver is not ready within the timeout, rather than
- * blocking forever on outgoingQueue.put().
+ * FIX (Bug #10): send() now uses configured sendTimeout.
+ *
+ * FIX (Bug #15): ReconnectState has exponential backoff — auto-recovers from
+ * connection drops without manual restart.
  */
 public class AstmDispatcher extends DestinationConnector {
     private static final Logger logger = Logger.getLogger(AstmDispatcher.class);
@@ -56,24 +55,21 @@ public class AstmDispatcher extends DestinationConnector {
 
             // Start the driver in a background thread so onStart() returns
             // immediately. For TCP_CLIENT mode, startDriver() may block on
-            // the initial connect attempt (with retry/backoff), and we do not
-            // want to block Mirth's channel-startup thread.
+            // the initial connect attempt (with retry/backoff).
             final AstmService svc = astmService;
             Thread starter = new Thread(() -> {
                 try {
                     svc.startDriver();
-                    logger.info("AstmDispatcher driver started in background for channel "
-                        + getChannelId());
+                    logger.info("AstmDispatcher driver started for channel " + getChannelId());
                 } catch (Exception e) {
-                    logger.error("AstmDispatcher background driver start failed for channel "
+                    logger.error("AstmDispatcher driver start failed for channel "
                         + getChannelId(), e);
                 }
             });
             starter.setName("AstmDispatcher-starter-" + getChannelId());
             starter.setDaemon(true);
             starter.start();
-            logger.info("AstmDispatcher onStart() completed (driver starting in background) for channel "
-                + getChannelId());
+            logger.info("AstmDispatcher onStart() completed for channel " + getChannelId());
         } catch (Exception e) {
             logger.error("Failed to initialize ASTM dispatcher for channel " + getChannelId(), e);
             throw new RuntimeException("ASTM dispatcher init failed: " + e.getMessage(), e);
@@ -178,17 +174,6 @@ public class AstmDispatcher extends DestinationConnector {
         }
     }
 
-    /**
-     * FIX (Bug #10): Previously used a hardcoded 5-second busy-wait and relied
-     * on isConnected() which was broken (Bug #6 — returned true immediately).
-     * This caused the first message after channel start to block forever on
-     * outgoingQueue.put() because the state machine was still in ConnectState.
-     *
-     * Now: use the configured sendTimeout, check isConnected() properly (which
-     * is now fixed to only return true once IDLE is reached), and return
-     * Status.ERROR if the driver is not ready within the timeout, rather than
-     * blocking the dispatcher thread indefinitely.
-     */
     @Override
     public Response send(ConnectorProperties connectorProperties, ConnectorMessage message) {
         try {

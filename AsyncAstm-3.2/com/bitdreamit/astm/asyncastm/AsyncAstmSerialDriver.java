@@ -141,4 +141,22 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
         if (context == null) throw new IllegalStateException("Driver not started");
         return context.sendMessage(message);
     }
+
+    /**
+     * Force-close the underlying serial connection. The state machine will
+     * then transition to ReconnectState and retry openPort() using the latest
+     * configured portName (so a COM-port-name change in the channel settings
+     * takes effect on the next reconnect).
+     */
+    @Override
+    public void forceReconnect() {
+        try {
+            if (context != null && context.getConnection() != null) {
+                logger.info("Force-reconnecting serial driver (port " + portName + ")");
+                context.getConnection().close();
+            }
+        } catch (Exception e) {
+            logger.warn("Error during forceReconnect (Serial)", e);
+        }
+    }
 }

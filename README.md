@@ -1,189 +1,97 @@
-# bitdreamit-astm v3.0.3 — Full Source + Verification Tools
+# bitdreamit-astm v3.0.3 — Simple Fix
 
-This package contains the **complete** source code of bitdreamit-astm v3.0.3
-(TCP + Serial combined version) with all 12 bugs from v3.0.2 pre-fixed.
+You had v2.4.2 working for 4 years. You upgraded to v3.0.2 and channels silently
+stopped working. This package fixes that.
 
-You do NOT need to apply any patches — the source tree is ready to build as-is.
+## What was wrong (the simple version)
 
-## What's inside
+3 simple bugs in v3.0.2 caused all your trouble:
+
+1. **Channels lost their settings on upgrade.**
+   The migration code was empty. Channels that were TCP-Server-on-port-3600
+   became TCP-Client-to-127.0.0.1:5004 after the upgrade.
+
+2. **Reader thread crashed silently when a client connected.**
+   The code started the reader thread before the socket existed. The thread
+   crashed on null and died. Channel showed "Started" but processed nothing.
+
+3. **No status updates reached Mirth.**
+   The driver never sent connection status back to Mirth. Dashboard stayed
+   blank — the "channel not enable" symptom.
+
+Plus: connection failures were logged at DEBUG (invisible at default log level).
+
+## What this fix does
+
+12 files patched. The 3 critical bugs above are fixed. Plus:
+
+- **Auto-recovery with backoff**: when USB-COM is unplugged or analyzer drops,
+  the channel waits 5s, 10s, 20s, 40s, 60s and retries. When the cable is
+  plugged back in, the channel automatically returns to normal. NO manual
+  restart needed.
+
+- **COM port name change works**: when you edit the channel's COM port in
+  Mirth Administrator (e.g., COM3 → COM5) and click Save, the channel picks
+  up the new port on the next reconnect cycle (within 5-60s). NO restart needed.
+
+- **Visible logging**: connection failures now log at WARN/ERROR level so you
+  can see them in the Mirth log.
+
+## Files in this package
 
 ```
-bitdreamit-astm-3.0.3-full/
-├── README.md                          (this file)
-├── DIAGNOSTIC.md                      (root-cause analysis of all 12 bugs)
-├── AsyncAstm-3.2/                     (AsyncAstm-3.2.jar sources — patches applied)
-│   └── com/bitdreamit/astm/asyncastm/
-│       ├── AsyncAstmTcpDriver.java     [FIX #6: isConnected()]
-│       ├── AsyncAstmSerialDriver.java [FIX #6, #4: isConnected(), callback]
-│       ├── service/
-│       │   ├── connection/
-│       │   │   ├── AstmTcpServerConnection.java  [FIX #2: reader NPE]
-│       │   │   ├── AstmTcpClientConnection.java   [FIX #3, #5: reader NPE, silent logs]
-│       │   │   ├── AstmSerialConnection.java      [FIX #9: RuntimeException -> IOException]
-│       │   │   ├── AbstractAstmConnection.java    (unchanged)
-│       │   │   ├── AstmConnectionListener.java    (unchanged)
-│       │   │   ├── AstmConnectionManager.java     (unchanged, deprecated)
-│       │   │   ├── AstmControlChars.java          (unchanged)
-│       │   │   └── Protocol.java                  (unchanged)
-│       │   └── states/                             (AstmStateMachine + 8 states)
-│       │       ├── AstmState.java                  [FIX #9: catch RuntimeException]
-│       │       ├── AstmStateMachine.java           (unchanged)
-│       │       ├── InitialState.java              (unchanged)
-│       │       ├── ConnectState.java              (unchanged)
-│       │       ├── IdleState.java                 (unchanged)
-│       │       ├── TransferReceiverState.java     (unchanged)
-│       │       ├── TransferSenderState.java       (unchanged)
-│       │       ├── ReconnectState.java             (unchanged)
-│       │       ├── DisconnectState.java           (unchanged)
-│       │       ├── ExitState.java                 (unchanged)
-│       │       ├── bundle/AstmContext.java        (unchanged)
-│       │       └── callback/                       (AstmStatusCallback + AstmConnectionStatus)
-│       └── ...
-├── astm-client/                       (astm-client.jar sources)
-│   └── com/bitdreamit/connect/astm/
-│       ├── AstmListener.java          (unchanged — new UI panel)
-│       ├── AstmSender.java             (unchanged — new UI panel)
-│       ├── AstmSettingsPanel.java      [version label bumped to v3.0.3]
-│       └── AstmSettingsClient.java    (unchanged)
-│   (NOTE: legacy AstmConnectorPanel.java deleted — Bug #11)
-├── astm-server/                       (astm-server.jar sources)
-│   └── com/bitdreamit/connect/astm/
-│       ├── AstmService.java           [FIX #4: callback param, #7: whitelist restored]
-│       ├── AstmReceiver.java          [FIX #4: register callback]
-│       ├── AstmDispatcher.java        [FIX #4 + #10: callback + send timeout]
-│       ├── AstmReceiverService.java   (unchanged)
-│       └── AstmConnectionManager.java (unchanged, deprecated)
-├── astm-shared/                       (astm-shared.jar sources)
-│   └── com/bitdreamit/connect/astm/
-│       ├── AstmProperties.java        [FIX #1: migrate4_5_0, #8: defaults]
-│       ├── AstmReceiverProperties.java [FIX #1: migrate4_5_0 override]
-│       ├── AstmDispatcherProperties.java [FIX #1: migrate4_5_0 override, toFormattedString]
-│       └── AstmWhitelist.java          (unchanged)
-├── sign/bitdreamit-astm/              (build target with plugin.xml + signed JAR setup)
-│   ├── plugin.xml                     [version bumped to 3.0.3]
-│   ├── source.xml                     [version bumped to 3.0.3]
-│   ├── destination.xml                [version bumped to 3.0.3]
-│   ├── mykeystore.jks                 (your existing keystore)
-│   ├── mykeystore.p12                 (your existing keystore)
-│   └── lib/
-│       ├── AsyncAstm-3.2.jar          (built from AsyncAstm-3.2/ above)
-│       └── jSerialComm-2.10.4.jar     (unchanged)
-└── tools/                              (end-to-end verification toolset)
-    ├── README.md                       (verification workflow)
-    ├── test-channel-astm-listener.xml  (Mirth channel — TCP Server, port 3600)
-    ├── analyzer-simulator.py           (Python ASTM analyzer — sends ENQ+frames+EOT)
-    ├── astm-log-viewer.py              (tails mirth.log, filters ASTM lines, colorized)
-    └── verify-end-to-end.sh            (one-shot runner that ties it all together)
+bitdreamit-astm-3.0.3-full.zip         <- full source (build this)
+bitdreamit-astm-3.0.3-patched.zip       <- patch-only (drop into v3.0.2 source)
+bitdreamit-astm-DIAGNOSTIC.md           <- detailed bug-by-bug explanation
+bitdreamit-astm-RELEASE-NOTES.md        <- feature list + migration paths
 ```
 
-## Quick start
+## How to install (5 steps)
 
-### 1. Build the plugin
+1. Unzip `bitdreamit-astm-3.0.3-full.zip`
+2. Open in IntelliJ IDEA → build the 4 JARs (`AsyncAstm-3.2.jar`, `astm-shared.jar`, `astm-server.jar`, `astm-client.jar`)
+3. Copy them into `sign/bitdreamit-astm/` (keep `lib/jSerialComm-2.10.4.jar`)
+4. Sign the plugin with your existing keystore (`mykeystore.jks`)
+5. Upload to Mirth Connect via Extensions → Install
 
-Open this directory in IntelliJ IDEA. The project should load with all the
-existing `.iml` module files. Build all four artifacts:
+## How to verify it works
 
-- `AsyncAstm-3.2.jar`
-- `astm-shared.jar`
-- `astm-server.jar`
-- `astm-client.jar`
+After installing + restarting Mirth:
 
-Copy them into `sign/bitdreamit-astm/` (replacing the old ones). Make sure
-`sign/bitdreamit-astm/lib/jSerialComm-2.10.4.jar` is still present.
+1. **Open an existing ASTM channel** (one you had under v2.4.2).
+   The transport mode and port should now be correct (TCP Server, port 3600)
+   instead of the wrong defaults (TCP Client, 127.0.0.1, 5004).
+   Click Save to commit the migration.
 
-### 2. Sign the plugin
+2. **Start the channel.**
+   The dashboard should show "Listening on 0.0.0.0:3600".
 
-Use the existing keystore (`sign/bitdreamit-astm/mykeystore.jks` or
-`.p12`) to sign the plugin package. The exact signing command depends on
-your existing workflow — typically:
+3. **Test with the analyzer simulator** (in `tools/`):
+   ```bash
+   python3 tools/analyzer-simulator.py --host 127.0.0.1 --port 3600
+   ```
+   You should see ACKs for every frame, and a new message in the Mirth
+   Messages view.
 
-```bash
-cd sign/
-zip -r bitdreamit-astm.zip bitdreamit-astm/
-jarsigner -keystore bitdreamit-astm/mykeystore.jks bitdreamit-astm.zip <alias>
-```
+## For lab staff (no IT needed)
 
-### 3. Install in Mirth Connect
+Once this fix is installed, lab staff just need to know:
 
-In Mirth Administrator: Extensions → Install → select the signed `bitdreamit-astm.zip`.
-Restart the Mirth service.
+- **If the analyzer isn't sending data**: wait 1-2 minutes. The channel
+  auto-recovers. If it doesn't, check that:
+  - The analyzer is powered on
+  - The USB cable is plugged in (firmly)
+  - The analyzer's screen shows "Ready" or "Transmit"
 
-### 4. Import the test channel
+- **If the USB cable was moved to a different port**:
+  Edit the channel in Mirth Administrator → change the COM port → Save.
+  Within 1 minute the channel picks up the new port. NO restart needed.
 
-Channels → Import Channel → select `tools/test-channel-astm-listener.xml`.
-Deploy the channel.
+## What's NOT in this fix (kept simple)
 
-### 5. Run the end-to-end verification
+- No watchdog thread (over-engineered for a lab)
+- No Python recovery tools (lab staff use Mirth Administrator)
+- No custom log viewer (use Mirth's built-in log viewer)
+- No idle-timeout property (the standard 5s/10s/20s/40s/60s backoff is enough)
 
-Open a terminal on a machine that can reach Mirth's TCP port 3600:
-
-```bash
-# Full one-shot verification (with log viewer in background)
-./tools/verify-end-to-end.sh 127.0.0.1 3600 /opt/mirth-connect/logs/mirth.log
-
-# OR manually:
-python3 tools/analyzer-simulator.py --host 127.0.0.1 --port 3600
-
-# In a second terminal — watch the Mirth log in real time:
-python3 tools/astm-log-viewer.py /opt/mirth-connect/logs/mirth.log --follow
-```
-
-Expected output from the simulator:
-```
-[sim] Connected to 127.0.0.1:3600
-[sim] → sending ENQ
-[sim] ← ACK received (Mirth is ready to receive frames)
-[sim] → frame 1/6: '1\rH|\^&||PS|||bitdreamit-sim^1.0||...'
-[sim] ← ACK for frame 1
-[sim] → frame 2/6: '2\rP|1||P001||Doe^John^A||...'
-[sim] ← ACK for frame 2
-...
-[sim] → sending EOT
-[sim] Transfer complete.
-```
-
-Expected log viewer output:
-```
-2026-08-13 14:23:45,123 INFO  c.b.connect.astm.AstmReceiver       - AstmReceiver started: mode=TCP_SERVER, channel=...
-2026-08-13 14:23:45,124 INFO  c.b.a.a.s.c.AstmTcpServerConnection - Listening inbound ASTM on TCP port 3600 on 0.0.0.0
-2026-08-13 14:23:45,125 INFO  c.b.a.a.s.c.AstmTcpServerConnection - Waiting for inbound TCP client to connect on port 3600 ...
-2026-08-13 14:24:01,234 INFO  c.b.a.a.s.c.AstmTcpServerConnection - Client [127.0.0.1] connected
-2026-08-13 14:24:01,235 INFO  c.b.a.a.s.states.AstmStateMachine    - Executing state Idle
-2026-08-13 14:24:01,236 DEBUG c.b.a.a.s.states.IdleState           - Received ENQ request
-2026-08-13 14:24:01,237 DEBUG c.b.a.a.s.states.IdleState           - Trying to receive message
-```
-
-Expected Mirth Messages view: a new message with `encodedData` containing
-the decoded ASTM records (`H|...` `P|...` `O|...` `R|...` `R|...` `L|...`).
-The File Writer destination will write it to `/tmp/astm-output/<timestamp>.txt`.
-
-Expected dashboard connector status:
-1. `Listening on 0.0.0.0:3600` (initially)
-2. `Connected - Waiting for receiving messages` (when simulator connects)
-3. `Receiving new message` (during transfer)
-4. back to `Connected - Waiting for receiving messages` (after EOT)
-
-## If something is wrong
-
-If the dashboard badge is BLANK, or the simulator reports "Timeout waiting
-for ACK", or no message appears in the Mirth Messages view — read
-`DIAGNOSTIC.md`. It walks through all 12 bugs with file/line references so
-you can verify each fix is actually applied.
-
-Common gotchas:
-- **Old JAR still loaded** — stop Mirth, delete the old plugin JARs from
-  `extensions/bitdreamit-astm/`, restart, then install v3.0.3 fresh.
-- **Channel not redeployed after upgrade** — restart Mirth Connect after
-  installing the plugin so it reloads the channel XML and runs `migrate4_5_0()`.
-- **Firewall blocking port 3600** — `telnet <mirth-host> 3600` should
-  succeed; if not, open the port.
-- **Wrong host in channel config** — if Mirth and the analyzer are on
-  different machines, the analyzer must point to Mirth's IP, not 127.0.0.1.
-
-## Version history
-
-| Version | Status | Notes |
-|---|---|---|
-| 2.4.2 | TCP only, obfuscated | Worked for 4 years |
-| 3.0.2 | TCP + Serial, refactored | Silent channel-failure bug (12 root causes) |
-| **3.0.3** | **TCP + Serial, patched** | **All 12 bugs fixed — this package** |
+If you need any of those later, ask and I'll add them back.
