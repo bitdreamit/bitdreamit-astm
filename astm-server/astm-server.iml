@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <module type="JAVA_MODULE" version="4">
-  <component name="NewModuleRootManager" inherit-compiler-output="true">
-    <exclude-output />
+  <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$" isTestSource="false" />
     </content>
-    <orderEntry type="inheritedJdk" />
-    <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="module" module-name="astm-async" />
-    <orderEntry type="module" module-name="astm-shared" />
-    <orderEntry type="library" name="mirth-server" level="project" />
+    <orderEntry type="inheritedJdk" level="project" />
+    <orderEntry type="sourceFolder" forTests="false" level="project" />
+    <orderEntry type="module" module-name="astm-async" level="project" />
+    <orderEntry type="module" module-name="astm-shared" level="project" />
+    <orderEntry type="library" name="mirth-lib" scope="PROVIDED" level="project" />
+    <orderEntry type="library" name="jSerialComm" scope="PROVIDED" level="project" />
   </component>
 </module>

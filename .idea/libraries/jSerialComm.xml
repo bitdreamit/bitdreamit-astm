@@ -1,7 +1,7 @@
 <component name="libraryTable">
   <library name="jSerialComm">
     <CLASSES>
-      <root url="jar://$PROJECT_DIR$/lib/jSerialComm-2.10.4.jar!/" />
+      <root url="jar://$PROJECT_DIR$/sign/bitdreamit-astm/lib/jSerialComm-2.10.4.jar!/" />
     </CLASSES>
     <JAVADOC />
     <SOURCES />
