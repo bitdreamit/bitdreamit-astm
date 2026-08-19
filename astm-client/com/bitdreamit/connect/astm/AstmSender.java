@@ -1,5 +1,11 @@
 package com.bitdreamit.connect.astm;
 
+import com.mirth.connect.client.ui.components.MirthButton;
+import com.mirth.connect.client.ui.components.MirthCheckBox;
+import com.mirth.connect.client.ui.components.MirthComboBox;
+import com.mirth.connect.client.ui.components.MirthRadioButton;
+import com.mirth.connect.client.ui.components.MirthTextArea;
+import com.mirth.connect.client.ui.components.MirthTextField;
 import com.mirth.connect.client.ui.panels.connectors.ConnectorSettingsPanel;
 import com.mirth.connect.donkey.model.channel.ConnectorProperties;
 import net.miginfocom.swing.MigLayout;
@@ -10,39 +16,55 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
+/**
+ * ASTM Sender — Destination connector settings panel.
+ *
+ * FIX (Bug #17 — Restore "All interfaces" / "Specific interface" option):
+ * Restored radio buttons for TCP Server mode binding.
+ *
+ * FIX (Bug #18 — Use Mirth UI components so changes are saved):
+ * Replaced standard javax.swing components with Mirth equivalents.
+ *
+ * NOTE on MirthComboBox: only has a no-arg constructor. Use addItem() to populate.
+ * NOTE on MirthTextArea: only has a no-arg constructor. Use setRows/setColumns.
+ */
 public class AstmSender extends ConnectorSettingsPanel implements ActionListener {
 
-    private JComboBox<String> modeBox;
+    private MirthComboBox<String> modeBox;
 
     private JPanel tcpPanel;
-    private JTextField hostField;
-    private JTextField portField;
-    private JCheckBox serverModeBox;
-    private JTextField connTimeoutField;
+    private MirthTextField hostField;
+    private MirthTextField portField;
+    private MirthCheckBox serverModeBox;
+    private MirthTextField connTimeoutField;
+    private MirthRadioButton allInterfacesRadio;
+    private MirthRadioButton specificInterfaceRadio;
+    private ButtonGroup interfaceGroup;
+    private MirthTextField bindAddressField;
 
     private JPanel serialPanel;
-    private JComboBox<String> serialPortBox;
-    private JButton refreshPortsBtn;
-    private JComboBox<String> baudBox;
-    private JComboBox<String> dataBitsBox;
-    private JComboBox<String> stopBitsBox;
-    private JComboBox<String> parityBox;
-    private JComboBox<String> flowBox;
-    private JComboBox<String> charsetBox;
-    private JTextField readTimeoutField;
-    private JTextField writeTimeoutField;
+    private MirthComboBox<String> serialPortBox;
+    private MirthButton refreshPortsBtn;
+    private MirthComboBox<String> baudBox;
+    private MirthComboBox<String> dataBitsBox;
+    private MirthComboBox<String> stopBitsBox;
+    private MirthComboBox<String> parityBox;
+    private MirthComboBox<String> flowBox;
+    private MirthComboBox<String> charsetBox;
+    private MirthTextField readTimeoutField;
+    private MirthTextField writeTimeoutField;
 
     private JPanel protocolPanel;
-    private JComboBox<String> protocolBox;
-    private JCheckBox enqAckBox;
-    private JCheckBox checksumBox;
-    private JTextField maxRetriesField;
-    private JTextField frameSizeField;
-    private JTextField interFrameDelayField;
+    private MirthComboBox<String> protocolBox;
+    private MirthCheckBox enqAckBox;
+    private MirthCheckBox checksumBox;
+    private MirthTextField maxRetriesField;
+    private MirthTextField frameSizeField;
+    private MirthTextField interFrameDelayField;
 
     private JPanel templatePanel;
-    private JTextArea templateArea;
-    private JTextField sendTimeoutField;
+    private MirthTextArea templateArea;
+    private MirthTextField sendTimeoutField;
 
     public AstmSender() {
         initComponents();
@@ -60,42 +82,75 @@ public class AstmSender extends ConnectorSettingsPanel implements ActionListener
         setLayout(new MigLayout("insets 8, novisualpadding, hidemode 3, fillx, gap 4", "[][grow]", ""));
 
         add(new JLabel("Transport Mode:"), "right");
-        modeBox = new JComboBox<>(new String[]{"TCP Client", "TCP Server", "Serial (RS-232)"});
+        modeBox = new MirthComboBox<>();
+        modeBox.addItem("TCP Client");
+        modeBox.addItem("TCP Server");
+        modeBox.addItem("Serial (RS-232)");
         modeBox.addActionListener(this);
         add(modeBox, "w 200!, wrap");
 
+        // ============ TCP PANEL ============
         tcpPanel = new JPanel(new MigLayout("insets 8, gap 4", "[][grow]", ""));
         tcpPanel.setBackground(Color.WHITE);
         tcpPanel.setBorder(new TitledBorder("TCP Settings"));
-        hostField = new JTextField();
-        portField = new JTextField();
-        serverModeBox = new JCheckBox("Server Mode (Listen)");
+        hostField = new MirthTextField();
+        portField = new MirthTextField();
+        serverModeBox = new MirthCheckBox("Server Mode (Listen)");
         serverModeBox.setBackground(Color.WHITE);
-        connTimeoutField = new JTextField();
+        serverModeBox.addActionListener(this);
+        connTimeoutField = new MirthTextField();
+
+        allInterfacesRadio = new MirthRadioButton("All interfaces");
+        allInterfacesRadio.setBackground(Color.WHITE);
+        allInterfacesRadio.setToolTipText("<html>If selected, the connector will listen on all interfaces, using address 0.0.0.0.</html>");
+        allInterfacesRadio.addActionListener(this);
+        specificInterfaceRadio = new MirthRadioButton("Specific interface:");
+        specificInterfaceRadio.setBackground(Color.WHITE);
+        specificInterfaceRadio.setToolTipText("<html>If selected, the connector will listen only on the specific interface address defined.</html>");
+        specificInterfaceRadio.addActionListener(this);
+        interfaceGroup = new ButtonGroup();
+        interfaceGroup.add(allInterfacesRadio);
+        interfaceGroup.add(specificInterfaceRadio);
+        allInterfacesRadio.setSelected(true);
+        bindAddressField = new MirthTextField();
+        bindAddressField.setToolTipText("<html>IP address of the network interface to bind to (e.g., 192.168.1.10).<br>Only used when 'Specific interface' is selected.</html>");
+        bindAddressField.setEnabled(false);
+
         tcpPanel.add(new JLabel("Host:"), "right");
         tcpPanel.add(hostField, "w 200!, wrap");
         tcpPanel.add(new JLabel("Port:"), "right");
         tcpPanel.add(portField, "w 100!, wrap");
         tcpPanel.add(serverModeBox, "span 2, wrap");
+        tcpPanel.add(new JLabel("Listen on:"), "right");
+        tcpPanel.add(allInterfacesRadio, "split 3");
+        tcpPanel.add(specificInterfaceRadio, "");
+        tcpPanel.add(bindAddressField, "w 150!, wrap");
         tcpPanel.add(new JLabel("Conn Timeout (ms):"), "right");
         tcpPanel.add(connTimeoutField, "w 100!, wrap");
         add(tcpPanel, "span, growx, wrap");
 
+        // ============ SERIAL PANEL ============
         serialPanel = new JPanel(new MigLayout("insets 8, gap 4", "[][grow]", ""));
         serialPanel.setBackground(Color.WHITE);
         serialPanel.setBorder(new TitledBorder("Serial Settings"));
-        serialPortBox = new JComboBox<>();
+        serialPortBox = new MirthComboBox<>();
         serialPortBox.setEditable(true);
-        refreshPortsBtn = new JButton("Refresh");
+        refreshPortsBtn = new MirthButton("Refresh");
         refreshPortsBtn.addActionListener(this);
-        baudBox = new JComboBox<>(new String[]{"9600", "19200", "38400", "57600", "115200"});
-        dataBitsBox = new JComboBox<>(new String[]{"5", "6", "7", "8"});
-        stopBitsBox = new JComboBox<>(new String[]{"1", "1.5", "2"});
-        parityBox = new JComboBox<>(new String[]{"None", "Odd", "Even", "Mark", "Space"});
-        flowBox = new JComboBox<>(new String[]{"None", "RTS/CTS", "XON/XOFF", "DSR/DTR"});
-        charsetBox = new JComboBox<>(new String[]{"UTF-8", "ISO-8859-1", "US-ASCII", "windows-1252"});
-        readTimeoutField = new JTextField();
-        writeTimeoutField = new JTextField();
+        baudBox = new MirthComboBox<>();
+        for (String s : new String[]{"9600", "19200", "38400", "57600", "115200"}) baudBox.addItem(s);
+        dataBitsBox = new MirthComboBox<>();
+        for (String s : new String[]{"5", "6", "7", "8"}) dataBitsBox.addItem(s);
+        stopBitsBox = new MirthComboBox<>();
+        for (String s : new String[]{"1", "1.5", "2"}) stopBitsBox.addItem(s);
+        parityBox = new MirthComboBox<>();
+        for (String s : new String[]{"None", "Odd", "Even", "Mark", "Space"}) parityBox.addItem(s);
+        flowBox = new MirthComboBox<>();
+        for (String s : new String[]{"None", "RTS/CTS", "XON/XOFF", "DSR/DTR"}) flowBox.addItem(s);
+        charsetBox = new MirthComboBox<>();
+        for (String s : new String[]{"UTF-8", "ISO-8859-1", "US-ASCII", "windows-1252"}) charsetBox.addItem(s);
+        readTimeoutField = new MirthTextField();
+        writeTimeoutField = new MirthTextField();
         serialPanel.add(new JLabel("Port:"), "right");
         serialPanel.add(serialPortBox, "split 2, w 180!");
         serialPanel.add(refreshPortsBtn, "w 80!, wrap");
@@ -117,19 +172,21 @@ public class AstmSender extends ConnectorSettingsPanel implements ActionListener
         serialPanel.add(writeTimeoutField, "w 100!, wrap");
         add(serialPanel, "span, growx, wrap");
 
+        // ============ PROTOCOL PANEL ============
         protocolPanel = new JPanel(new MigLayout("insets 8, gap 4", "[][grow]", ""));
         protocolPanel.setBackground(Color.WHITE);
         protocolPanel.setBorder(new TitledBorder("ASTM Protocol"));
-        protocolBox = new JComboBox<>(new String[]{"ELECSYS", "COBAS", "GENERIC"});
-        enqAckBox = new JCheckBox("Use ENQ/ACK Handshake");
+        protocolBox = new MirthComboBox<>();
+        for (String s : new String[]{"ELECSYS", "COBAS", "GENERIC"}) protocolBox.addItem(s);
+        enqAckBox = new MirthCheckBox("Use ENQ/ACK Handshake");
         enqAckBox.setSelected(true);
         enqAckBox.setBackground(Color.WHITE);
-        checksumBox = new JCheckBox("Use Checksum Validation");
+        checksumBox = new MirthCheckBox("Use Checksum Validation");
         checksumBox.setSelected(true);
         checksumBox.setBackground(Color.WHITE);
-        maxRetriesField = new JTextField();
-        frameSizeField = new JTextField();
-        interFrameDelayField = new JTextField();
+        maxRetriesField = new MirthTextField();
+        frameSizeField = new MirthTextField();
+        interFrameDelayField = new MirthTextField();
         protocolPanel.add(new JLabel("Dialect:"), "right");
         protocolPanel.add(protocolBox, "w 150!, wrap");
         protocolPanel.add(enqAckBox, "span 2, wrap");
@@ -142,12 +199,16 @@ public class AstmSender extends ConnectorSettingsPanel implements ActionListener
         protocolPanel.add(interFrameDelayField, "w 100!, wrap");
         add(protocolPanel, "span, growx, wrap");
 
+        // ============ TEMPLATE PANEL ============
         templatePanel = new JPanel(new MigLayout("insets 8, gap 4", "[][grow]", ""));
         templatePanel.setBackground(Color.WHITE);
         templatePanel.setBorder(new TitledBorder("Message Template"));
-        templateArea = new JTextArea(5, 40);
+        // FIX: MirthTextArea only has a no-arg constructor — set rows/columns via setters
+        templateArea = new MirthTextArea();
+        templateArea.setRows(5);
+        templateArea.setColumns(40);
         templateArea.setLineWrap(true);
-        sendTimeoutField = new JTextField();
+        sendTimeoutField = new MirthTextField();
         templatePanel.add(new JLabel("Template:"), "right, top");
         templatePanel.add(new JScrollPane(templateArea), "growx, wrap");
         templatePanel.add(new JLabel("Send Timeout (ms):"), "right");
@@ -155,10 +216,6 @@ public class AstmSender extends ConnectorSettingsPanel implements ActionListener
         add(templatePanel, "span, growx, wrap");
     }
 
-    /**
-     * IMPROVED: Uses reflection to dynamically enumerate serial ports via jSerialComm if available.
-     * Falls back to a hardcoded list if jSerialComm is not on the client classpath.
-     */
     private void refreshPortList() {
         serialPortBox.removeAllItems();
         serialPortBox.addItem("");
@@ -188,13 +245,27 @@ public class AstmSender extends ConnectorSettingsPanel implements ActionListener
         int mode = modeBox.getSelectedIndex();
         tcpPanel.setVisible(mode == 0 || mode == 1);
         serialPanel.setVisible(mode == 2);
+        boolean isServer = (mode == 1) || (mode == 0 && serverModeBox.isSelected());
+        allInterfacesRadio.setVisible(isServer);
+        specificInterfaceRadio.setVisible(isServer);
+        bindAddressField.setEnabled(isServer && specificInterfaceRadio.isSelected());
         revalidate(); repaint();
     }
 
     @Override
     public void actionPerformed(ActionEvent e) {
-        if (e.getSource() == modeBox) updateVisibility();
-        else if (e.getSource() == refreshPortsBtn) refreshPortList();
+        if (e.getSource() == modeBox) {
+            updateVisibility();
+        } else if (e.getSource() == serverModeBox) {
+            updateVisibility();
+        } else if (e.getSource() == allInterfacesRadio) {
+            bindAddressField.setEnabled(false);
+        } else if (e.getSource() == specificInterfaceRadio) {
+            bindAddressField.setEnabled(true);
+            bindAddressField.requestFocusInWindow();
+        } else if (e.getSource() == refreshPortsBtn) {
+            refreshPortList();
+        }
     }
 
     private void readFromUI(AstmProperties p) {
@@ -202,7 +273,25 @@ public class AstmSender extends ConnectorSettingsPanel implements ActionListener
         p.setTransportMode(mode == 0 ? AstmProperties.TransportMode.TCP_CLIENT :
                 mode == 1 ? AstmProperties.TransportMode.TCP_SERVER :
                         AstmProperties.TransportMode.SERIAL);
-        p.setHost(hostField.getText());
+        if (mode == 1) {
+            p.setServerMode(true);
+            if (allInterfacesRadio.isSelected()) {
+                p.setAllInterfaces(true);
+                p.setAddressBind("0.0.0.0");
+                p.setHost("0.0.0.0");
+            } else {
+                p.setAllInterfaces(false);
+                String bind = bindAddressField.getText().trim();
+                if (bind.isEmpty()) bind = "0.0.0.0";
+                p.setAddressBind(bind);
+                p.setHost(bind);
+            }
+        } else if (mode == 0) {
+            p.setServerMode(false);
+            p.setHost(hostField.getText());
+        } else {
+            p.setHost(hostField.getText());
+        }
         try { p.setPort(Integer.parseInt(portField.getText())); } catch (Exception ignored) {}
         p.setServerMode(serverModeBox.isSelected());
         try { p.setConnectionTimeout(Integer.parseInt(connTimeoutField.getText())); } catch (Exception ignored) {}
@@ -234,6 +323,14 @@ public class AstmSender extends ConnectorSettingsPanel implements ActionListener
         hostField.setText(p.getHost());
         portField.setText(String.valueOf(p.getPort()));
         serverModeBox.setSelected(p.isServerMode());
+        if (p.isAllInterfaces()) {
+            allInterfacesRadio.setSelected(true);
+            bindAddressField.setEnabled(false);
+        } else {
+            specificInterfaceRadio.setSelected(true);
+            bindAddressField.setEnabled(true);
+        }
+        bindAddressField.setText(p.getAddressBind());
         connTimeoutField.setText(String.valueOf(p.getConnectionTimeout()));
         serialPortBox.setSelectedItem(p.getSerialPort());
         baudBox.setSelectedItem(String.valueOf(p.getBaudRate()));
