@@ -158,6 +158,19 @@ public abstract class AbstractAstmConnection implements Closeable {
     public abstract void setSocketTimeout(int seconds) throws SocketException;
     public abstract boolean isServer();
 
+    /**
+     * FIX (Bug #19): Check if the underlying connection is still alive.
+     * Used by the reader thread to distinguish between "read timeout"
+     * (transient — port still open, just no data yet) and "port closed"
+     * (permanent — real EOF, reader thread should exit).
+     *
+     * Default implementation returns true (assumes alive). Subclasses
+     * like AstmSerialConnection override this to check serialPort.isOpen().
+     */
+    public boolean isConnectionAlive() {
+        return true;
+    }
+
     {
         this.readerTask = new Runnable() {
             @Override
@@ -168,7 +181,28 @@ public abstract class AbstractAstmConnection implements Closeable {
                         boolean success = false;
                         while (!success) {
                             try {
-                                AbstractAstmConnection.this.lastByte = AbstractAstmConnection.this.doGetInputStream().read();
+                                int b = AbstractAstmConnection.this.doGetInputStream().read();
+                                if (b == -1) {
+                                    // FIX (Bug #19): read() returned -1.
+                                    // With TIMEOUT_READ_BLOCKING and timeout=0, this means the
+                                    // port was closed. But with a non-zero timeout, it could
+                                    // also mean "no data within the timeout period."
+                                    // Check isConnectionAlive() to distinguish:
+                                    if (AbstractAstmConnection.this.isConnectionAlive()) {
+                                        // Port is still open — this was just a read timeout.
+                                        // Log at TRACE and retry the read.
+                                        logger.trace("read() returned -1 but port is still open — treating as timeout, retrying");
+                                        continue; // retry the inner while loop
+                                    } else {
+                                        // Port is closed — real EOF.
+                                        logger.debug("read() returned -1 and port is closed — EOF");
+                                        AbstractAstmConnection.this.lastByte = -1;
+                                        success = true;
+                                        AbstractAstmConnection.this.readySemaphore.release();
+                                        return;
+                                    }
+                                }
+                                AbstractAstmConnection.this.lastByte = b;
                                 success = true;
                                 AbstractAstmConnection.this.readySemaphore.release();
                             } catch (SocketTimeoutException e) {
