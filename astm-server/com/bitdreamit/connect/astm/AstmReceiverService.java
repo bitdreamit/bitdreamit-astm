@@ -21,7 +21,6 @@ public class AstmReceiverService implements Runnable {
     AstmReceiver source;
     AsyncAstmDriver asyncAstm;
     EventController eventController = ControllerFactory.getFactory().createEventController();
-    // FIX: Shared atomic flag instead of getCurrentState() race condition
     private final AtomicBoolean stopped;
 
     public AstmReceiverService(AstmReceiver source, AsyncAstmDriver asyncAstm, AtomicBoolean stopped) {
@@ -33,20 +32,37 @@ public class AstmReceiverService implements Runnable {
     public void run() {
         logger.info("ASTM listener thread started for channel: " + source.getChannel().getName());
         try {
-            // FIX: Loop while NOT stopped. This avoids the STARTED race condition.
             while (!stopped.get()) {
                 try {
                     Map<String, Object> sourceMap = new HashMap<>();
                     ReceivedMessage received = this.asyncAstm.getReceivedMessage();
 
                     if (received.getResult().getStatus() == Status.SUCCESS) {
+                        String message = received.getMessage();
+
+                        // FIX (Bug #22 — "Unable to parse message. It is NULL or too short"):
+                        // Some analyzers send ENQ -> ACK -> EOT without any data frames
+                        // (keep-alive ping, aborted transfer, or reset). The FrameBuffer
+                        // returns an empty string or just whitespace. The ER7Serializer
+                        // can't parse empty messages and throws:
+                        //   "Unable to parse message. It is NULL or too short."
+                        //
+                        // Fix: skip dispatch for empty/whitespace-only messages.
+                        // Log at DEBUG so it doesn't spam the log (this is normal behavior).
+                        if (message == null || message.trim().isEmpty()) {
+                            logger.debug("Received empty ASTM transfer (ENQ->ACK->EOT with no "
+                                + "data frames) — skipping dispatch. This is normal for "
+                                + "keep-alive pings or aborted transfers.");
+                            continue;
+                        }
+
                         DispatchResult dispatchResult = null;
                         try {
                             dispatchResult = this.source.dispatchRawMessage(
-                                    new RawMessage(received.getMessage(), (Collection) null, sourceMap));
+                                    new RawMessage(message, (Collection) null, sourceMap));
                         } catch (Exception dispatchEx) {
-                            // Per-message failure: log, but keep listening
-                            this.logger.error("Failed to dispatch ASTM message to Mirth channel. Message dropped.", dispatchEx);
+                            this.logger.error("Failed to dispatch ASTM message to Mirth channel. "
+                                + "Message dropped.", dispatchEx);
                         } finally {
                             if (dispatchResult != null) {
                                 try {
@@ -76,7 +92,6 @@ public class AstmReceiverService implements Runnable {
                     Thread.currentThread().interrupt();
                     break;
                 } catch (RuntimeException ex) {
-                    // Recoverable per-message error: log and continue
                     this.logger.error("Recoverable error processing ASTM message. Continuing to listen.", ex);
                 }
             }

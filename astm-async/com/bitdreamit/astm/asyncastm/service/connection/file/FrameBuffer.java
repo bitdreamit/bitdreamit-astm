@@ -9,18 +9,21 @@ import java.util.List;
  *
  * FIX (Bug #20 — Checksum bytes appearing as separate lines):
  *
- * ASTM frame format on the wire:
- *   <STX> FN <CR> record_data <CR> checksum <ETX> <CR> <LF>
+ * D-10 frame format (from Bio-Rad Technical Bulletin L20017702):
+ *   <STX> FN record_data <CR> <ETX> <CHK1> <CHK2> <CR> <LF>
  *
- * readLine() returns everything between <STX> and <CR><LF>:
- *   FN <CR> record_data <CR> checksum <ETX>
+ * NOTE: The frame number is DIRECTLY ATTACHED to the record (no <CR> between them).
+ * The <CR> comes BEFORE <ETX>, not before the checksum.
  *
- * SIMPLE FIX: Just split by <CR> and take field [1] (the record data).
- * Field [0] = frame number (discard)
- * Field [1] = record data (KEEP)
- * Field [2] = checksum + ETX (discard)
+ * readLine() returns (after <STX> is consumed):
+ *   FN record_data <CR> <ETX> checksum
  *
- * This is simpler and more robust than trying to detect hex checksums.
+ * Example: "1H|\^&...<CR><ETX>03"
+ *
+ * To extract the record:
+ *   1. Strip the frame number (first char — a digit 0-7)
+ *   2. Take everything BEFORE the first <CR>
+ *   3. That's the record — everything after <CR> is <ETX>+checksum (discard)
  */
 public class FrameBuffer {
     private Protocol protocol;
@@ -38,63 +41,33 @@ public class FrameBuffer {
             return;
         }
 
-        // ============================================================
-        // SIMPLE FIX (Bug #20): Split by <CR> and take only the record.
-        // ============================================================
-        // Frame format from readLine():
-        //   FN<CR>record<CR>checksum<ETX>
-        //
-        // Split by <CR> (\r):
-        //   parts[0] = "FN"           (frame number — discard)
-        //   parts[1] = "record"       (the actual ASTM record — KEEP)
-        //   parts[2] = "checksum<ETX>" (checksum + terminator — discard)
-        //
-        // For multi-record frames (Cobas), parts[1] may contain
-        // multiple records separated by <CR>. But for D-10 (one
-        // record per frame), parts[1] is the single record.
-        // ============================================================
+        // Step 1: Strip frame number (first char — a digit 0-7)
+        // D-10 format: "1H|\^&..." — frame number is directly attached to record
+        if (frame.length() > 1 && Character.isDigit(frame.charAt(0))) {
+            frame = frame.substring(1);
+        }
 
-        String[] parts = frame.split("\r");
+        // Step 2: Take everything BEFORE the first <CR>
+        // After stripping frame number: "H|\^&...<CR><ETX>03"
+        // The <CR> separates the record from <ETX>+checksum
+        int crIndex = frame.indexOf('\r');
+        if (crIndex >= 0) {
+            frame = frame.substring(0, crIndex);
+        }
 
-        // parts[1] is the record data — this is what we want
-        if (parts.length >= 2 && !parts[1].isEmpty()) {
-            String record = parts[1];
+        // Step 3: Strip any trailing ETX/ETB just in case
+        while (frame.length() > 0) {
+            char last = frame.charAt(frame.length() - 1);
+            if (last == 0x03 || last == 0x17) {
+                frame = frame.substring(0, frame.length() - 1);
+            } else {
+                break;
+            }
+        }
 
-            // Strip any trailing ETX/ETB that might have been included
-            // (shouldn't happen with split, but just in case)
-            while (record.length() > 0) {
-                char last = record.charAt(record.length() - 1);
-                if (last == 0x03 || last == 0x17) {
-                    record = record.substring(0, record.length() - 1);
-                } else {
-                    break;
-                }
-            }
-
-            if (!record.isEmpty()) {
-                this.frames.add(record);
-            }
-        } else {
-            // Fallback: if split didn't work, use the old method
-            // (strip first char = frame number, strip last 4 chars = CR+checksum+ETX)
-            String record = frame;
-            if (record.length() > 0 && Character.isDigit(record.charAt(0))) {
-                record = record.substring(1);
-            }
-            // Strip leading CR
-            while (record.startsWith("\r") || record.startsWith("\n")) {
-                record = record.substring(1);
-            }
-            // Strip trailing CR + 2-char checksum + ETX (4 chars total)
-            if (record.length() > 4) {
-                record = record.substring(0, record.length() - 4);
-            }
-            while (record.endsWith("\r") || record.endsWith("\n")) {
-                record = record.substring(0, record.length() - 1);
-            }
-            if (!record.isEmpty()) {
-                this.frames.add(record);
-            }
+        // Add the clean record
+        if (!frame.isEmpty()) {
+            this.frames.add(frame);
         }
     }
 
