@@ -7,32 +7,20 @@ import java.util.List;
 /**
  * Assembles received ASTM frames into a complete message.
  *
- * FIX (Bug #20 — Checksum bytes appearing as separate lines in decoded message):
+ * FIX (Bug #20 — Checksum bytes appearing as separate lines):
  *
- * ASTM E-1381 frame format on the wire:
- *   <STX> FN <CR> record_data <CR> checksum <ETX|ETB> <CR> <LF>
+ * ASTM frame format on the wire:
+ *   <STX> FN <CR> record_data <CR> checksum <ETX> <CR> <LF>
  *
- * The TransferReceiverState reads the STX byte, then calls readLine() which
- * reads until <CR><LF>. So the frame string passed to appendFrame() contains:
- *   FN <CR> record_data <CR> checksum <ETX|ETB>
+ * readLine() returns everything between <STX> and <CR><LF>:
+ *   FN <CR> record_data <CR> checksum <ETX>
  *
- * (The final <CR><LF> is consumed by readLine but not included in the return.)
+ * SIMPLE FIX: Just split by <CR> and take field [1] (the record data).
+ * Field [0] = frame number (discard)
+ * Field [1] = record data (KEEP)
+ * Field [2] = checksum + ETX (discard)
  *
- * Previous code only stripped the frame number (first char), leaving:
- *   <CR> record_data <CR> checksum <ETX>
- *
- * When this was later split by <CR>, the checksum appeared as a separate
- * "record" line (e.g., "07", "3F", "DB"). This caused Mirth's ASTM parser
- * and the user's JavaScript transformer to see extra garbage lines.
- *
- * This fix properly parses the frame to extract ONLY the record_data:
- *   1. Strip frame number (first char, a digit 1-7)
- *   2. Strip leading <CR> (if present after frame number)
- *   3. Find the LAST <CR> in the frame — everything after it is "checksum<ETX/ETB>"
- *   4. Keep only the record_data between the leading <CR> and the last <CR>
- *
- * For multi-frame messages (ETB-terminated middle frames), each frame's
- * record_data is appended. The final ETX-terminated frame signals completion.
+ * This is simpler and more robust than trying to detect hex checksums.
  */
 public class FrameBuffer {
     private Protocol protocol;
@@ -51,80 +39,63 @@ public class FrameBuffer {
         }
 
         // ============================================================
-        // FIX (Bug #20): Properly parse the ASTM frame to extract
-        // only the record_data, stripping frame number, checksum,
-        // and ETX/ETB terminator.
+        // SIMPLE FIX (Bug #20): Split by <CR> and take only the record.
+        // ============================================================
+        // Frame format from readLine():
+        //   FN<CR>record<CR>checksum<ETX>
+        //
+        // Split by <CR> (\r):
+        //   parts[0] = "FN"           (frame number — discard)
+        //   parts[1] = "record"       (the actual ASTM record — KEEP)
+        //   parts[2] = "checksum<ETX>" (checksum + terminator — discard)
+        //
+        // For multi-record frames (Cobas), parts[1] may contain
+        // multiple records separated by <CR>. But for D-10 (one
+        // record per frame), parts[1] is the single record.
         // ============================================================
 
-        // Step 1: Strip frame number (first char, should be a digit 1-7)
-        if (Character.isDigit(frame.charAt(0))) {
-            frame = frame.substring(1);
-        }
+        String[] parts = frame.split("\r");
 
-        // Step 2: Strip leading <CR> (0x0D) if present
-        // After removing the frame number, the next char should be <CR>
-        // which separates the frame number from the record data.
-        while (!frame.isEmpty() && (frame.charAt(0) == '\r' || frame.charAt(0) == '\n')) {
-            frame = frame.substring(1);
-        }
+        // parts[1] is the record data — this is what we want
+        if (parts.length >= 2 && !parts[1].isEmpty()) {
+            String record = parts[1];
 
-        // Step 3: Strip trailing <ETX> (0x03) or <ETB> (0x17) terminator
-        // and the 2-character checksum before it.
-        //
-        // The end of the frame looks like: ...record_data<CR>XX<ETX>
-        // where XX is the 2-char hex checksum and <ETX> is the terminator.
-        //
-        // We need to find the LAST <CR> in the frame — everything after
-        // it is "checksum + terminator" which must be stripped.
-        if (!frame.isEmpty()) {
-            // Strip trailing ETX/ETB and any trailing CR/LF
-            // Work from the end of the string
-            int end = frame.length();
-            while (end > 0) {
-                char c = frame.charAt(end - 1);
-                if (c == 0x03 || c == 0x17 || c == '\r' || c == '\n') {
-                    end--;
+            // Strip any trailing ETX/ETB that might have been included
+            // (shouldn't happen with split, but just in case)
+            while (record.length() > 0) {
+                char last = record.charAt(record.length() - 1);
+                if (last == 0x03 || last == 0x17) {
+                    record = record.substring(0, record.length() - 1);
                 } else {
                     break;
                 }
             }
 
-            // Now find the LAST <CR> in the remaining content — this <CR>
-            // separates the record_data from the checksum.
-            // The checksum is exactly 2 hex characters, so we look for
-            // the pattern: <CR> XX  where XX is 2 hex chars at the end.
-            if (end > 2) {
-                // Check if the last 2 chars before the terminator are hex digits
-                // (the checksum). If so, strip them AND the <CR> before them.
-                int checkStart = end - 2;
-                if (checkStart > 0 && frame.charAt(checkStart - 1) == '\r'
-                        && isHexChar(frame.charAt(checkStart))
-                        && isHexChar(frame.charAt(checkStart + 1))) {
-                    // Found: ...record_data<CR>XX<terminator>
-                    // Strip the <CR>XX (checksum)
-                    end = checkStart - 1;
-                }
+            if (!record.isEmpty()) {
+                this.frames.add(record);
             }
-
-            frame = frame.substring(0, end);
+        } else {
+            // Fallback: if split didn't work, use the old method
+            // (strip first char = frame number, strip last 4 chars = CR+checksum+ETX)
+            String record = frame;
+            if (record.length() > 0 && Character.isDigit(record.charAt(0))) {
+                record = record.substring(1);
+            }
+            // Strip leading CR
+            while (record.startsWith("\r") || record.startsWith("\n")) {
+                record = record.substring(1);
+            }
+            // Strip trailing CR + 2-char checksum + ETX (4 chars total)
+            if (record.length() > 4) {
+                record = record.substring(0, record.length() - 4);
+            }
+            while (record.endsWith("\r") || record.endsWith("\n")) {
+                record = record.substring(0, record.length() - 1);
+            }
+            if (!record.isEmpty()) {
+                this.frames.add(record);
+            }
         }
-
-        // Step 4: Strip any trailing <CR> that might remain after checksum removal
-        while (frame.endsWith("\r") || frame.endsWith("\n")) {
-            frame = frame.substring(0, frame.length() - 1);
-        }
-
-        // Only add non-empty frames
-        if (!frame.isEmpty()) {
-            this.frames.add(frame);
-        }
-    }
-
-    /**
-     * Check if a character is a valid hex digit (0-9, A-F, a-f).
-     */
-    private static boolean isHexChar(char c) {
-        return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
     }
 
     public String getMessage() {
