@@ -8,22 +8,30 @@ import java.util.List;
  * Assembles received ASTM frames into a complete message.
  *
  * FIX (Bug #20 — Checksum bytes appearing as separate lines):
+ * FIX (Bug #23 — i800: multiple records per frame were lost):
  *
- * D-10 frame format (from Bio-Rad Technical Bulletin L20017702):
- *   <STX> FN record_data <CR> <ETX> <CHK1> <CHK2> <CR> <LF>
+ * Two analyzer frame formats:
  *
- * NOTE: The frame number is DIRECTLY ATTACHED to the record (no <CR> between them).
- * The <CR> comes BEFORE <ETX>, not before the checksum.
+ * 1. Bio-Rad D-10 (one record per frame):
+ *    <STX> FN record <CR> <ETX> checksum <CR> <LF>
+ *    Example: <STX>1H|\^&...<CR><ETX>03<CR><LF>
+ *    → Extract: "H|\^&..."
  *
- * readLine() returns (after <STX> is consumed):
- *   FN record_data <CR> <ETX> checksum
+ * 2. Maccura i800 (multiple records per frame, COBAS-style):
+ *    <STX> FN rec1 <CR> rec2 <CR> rec3 <CR> ... <ETB/ETX> checksum <CR> <LF>
+ *    Example: <STX>1H|\^&...<CR>P|1...<CR>O|1...<CR>R|1...<ETB>B8<CR><LF>
+ *    → Extract: "H|\^&...<CR>P|1...<CR>O|1...<CR>R|1..."
  *
- * Example: "1H|\^&...<CR><ETX>03"
+ * The fix:
+ *   1. Strip frame number (first char)
+ *   2. Find <ETB> (0x17) or <ETX> (0x03) — these mark the end of record data
+ *   3. Take everything between frame number and <ETB>/<ETX>
+ *   4. The <CR> characters within are record separators (preserve them)
+ *   5. Everything after <ETB>/<ETX> is the checksum (discard)
  *
- * To extract the record:
- *   1. Strip the frame number (first char — a digit 0-7)
- *   2. Take everything BEFORE the first <CR>
- *   3. That's the record — everything after <CR> is <ETX>+checksum (discard)
+ * This handles BOTH formats:
+ *   - D-10: "1H|\^&...\r\x03" → strip "1" → find \x03 → keep "H|\^&..."
+ *   - i800: "1H|\^&...\rP|1...\rO|1...\xETB" → strip "1" → find \xETB → keep "H|\^&...\rP|1...\rO|1..."
  */
 public class FrameBuffer {
     private Protocol protocol;
@@ -42,30 +50,37 @@ public class FrameBuffer {
         }
 
         // Step 1: Strip frame number (first char — a digit 0-7)
-        // D-10 format: "1H|\^&..." — frame number is directly attached to record
         if (frame.length() > 1 && Character.isDigit(frame.charAt(0))) {
             frame = frame.substring(1);
         }
 
-        // Step 2: Take everything BEFORE the first <CR>
-        // After stripping frame number: "H|\^&...<CR><ETX>03"
-        // The <CR> separates the record from <ETX>+checksum
-        int crIndex = frame.indexOf('\r');
-        if (crIndex >= 0) {
-            frame = frame.substring(0, crIndex);
-        }
-
-        // Step 3: Strip any trailing ETX/ETB just in case
-        while (frame.length() > 0) {
-            char last = frame.charAt(frame.length() - 1);
-            if (last == 0x03 || last == 0x17) {
-                frame = frame.substring(0, frame.length() - 1);
-            } else {
+        // Step 2: Find <ETB> (0x17) or <ETX> (0x03) — marks end of record data
+        // Everything after this is the checksum (2 hex chars) which we discard.
+        int endIndex = -1;
+        for (int i = 0; i < frame.length(); i++) {
+            char c = frame.charAt(i);
+            if (c == 0x03 || c == 0x17) {  // ETX or ETB
+                endIndex = i;
                 break;
             }
         }
 
-        // Add the clean record
+        // Step 3: Take everything before <ETB>/<ETX>
+        // This is the record data — may contain multiple <CR>-separated records
+        if (endIndex >= 0) {
+            frame = frame.substring(0, endIndex);
+        }
+        // If no ETB/ETX found, keep the whole frame (shouldn't happen, but be safe)
+
+        // Step 4: Strip any trailing <CR> that might be at the end of the record data
+        // (some analyzers put <CR> right before <ETB>/<ETX>)
+        while (frame.endsWith("\r") || frame.endsWith("\n")) {
+            frame = frame.substring(0, frame.length() - 1);
+        }
+
+        // Step 5: Add the clean record data to the frames list
+        // The <CR> characters WITHIN the frame are preserved — they separate
+        // multiple records (i800/COBAS style).
         if (!frame.isEmpty()) {
             this.frames.add(frame);
         }
