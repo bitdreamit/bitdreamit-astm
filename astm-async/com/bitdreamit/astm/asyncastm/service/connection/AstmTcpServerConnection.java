@@ -109,4 +109,18 @@ public class AstmTcpServerConnection extends AbstractAstmConnection {
     public final InetSocketAddress getAddress() {
         return new InetSocketAddress(this.bindAddress, this.port);
     }
+
+    /**
+     * EOF FIX: for TCP sockets an InputStream.read() returning -1 means the
+     * PEER CLOSED the connection (socket read timeouts surface as
+     * SocketTimeoutException, never as -1). The abstract default (alive=true)
+     * made the reader thread spin forever on -1 after an analyzer closed its
+     * socket, so the state machine never saw the EOF and never re-armed the
+     * listener. TCP connections therefore report "not alive" so read() == -1
+     * is correctly treated as EOF.
+     */
+    @Override
+    public boolean isConnectionAlive() {
+        return false;
+    }
 }

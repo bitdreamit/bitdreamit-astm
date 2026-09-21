@@ -410,3 +410,24 @@ If you find a bug in v3.0.3:
    - Channel XML (export via Channels → Export Channel)
    - Log viewer output
    - Simulator output (if reproducible with the simulator)
+
+## v3.1.1 — live-server fixes (tested end-to-end on Mirth Connect 4.5.2)
+
+1. **DEPLOY-ORDER FIX (AstmDispatcher)** — Mirth starts DESTINATION connectors before
+   the source. A standalone TCP_SERVER dispatcher bound the channel port first, fought
+   the AstmReceiver for the socket ("Address already in use" war) and could swallow the
+   instrument's session. The dispatcher now DEFERS the shared-driver lookup to the first
+   send() call instead of binding its own server port.
+2. **TCP EOF FIX (AstmTcpServerConnection / AstmTcpClientConnection)** — for TCP sockets
+   read() returning -1 always means the peer closed (timeouts throw SocketTimeoutException).
+   The reader thread treated -1 as "timeout, retry" (isConnectionAlive default true), spun
+   forever after an analyzer closed its socket, and the state machine never re-armed the
+   listener. Both TCP connections now report not-alive so -1 is treated as EOF.
+3. **CONNECTOR METADATA** — source.xml / destination.xml (transportName "ASTM Listener" /
+   "ASTM Sender") now ship with the distribution so the connectors register on Mirth 4.5.x.
+   XStream whitelist registration is unchanged (AstmService static init).
+
+Verified live (simulator + Mirth Connect 4.5.2 + JDBC test DB): instrument query →
+order download on the shared socket (Pentra 400 6.1/6.2, i-800 TSREQ/TSDWN, Erba XL
+packed), result push → lis_results upsert + NEW→ACCEPTED promotion, no-match responses,
+manual MIRTH|QUERY / MIRTH|ORDER triggers.

@@ -42,6 +42,14 @@ public class AstmDispatcher extends DestinationConnector {
     // instrument's own connection.
     private volatile boolean usingSharedDriver = false;
 
+    // DEPLOY-ORDER FIX: Mirth starts DESTINATION connectors BEFORE the source.
+    // A standalone TCP_SERVER destination that binds its own port at deploy
+    // time therefore races the channel's AstmReceiver for the same port
+    // ("Address already in use" war) and can steal the instrument's session.
+    // When no shared driver exists yet and the configured mode is TCP_SERVER,
+    // defer the resolution to the first send() call instead of binding.
+    private volatile boolean deferredSharedLookup = false;
+
     @Override
     public void onDeploy() {
         logger.info("AstmDispatcher deployed for channel " + getChannelId());
@@ -61,9 +69,10 @@ public class AstmDispatcher extends DestinationConnector {
         // source before destinations, but poll briefly to be safe.
         AsyncAstmDriver shared = AstmService.findSharedDriver(getChannelId());
         if (shared == null) {
-            long deadline = System.currentTimeMillis() + 15000;
+            // short poll only; the source typically registers milliseconds later
+            long deadline = System.currentTimeMillis() + 3000;
             while (shared == null && System.currentTimeMillis() < deadline) {
-                try { Thread.sleep(200); } catch (InterruptedException e) {
+                try { Thread.sleep(100); } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
                 }
@@ -72,6 +81,7 @@ public class AstmDispatcher extends DestinationConnector {
         }
         if (shared != null) {
             usingSharedDriver = true;
+            deferredSharedLookup = false;
             astmService = AstmService.wrapSharedDriver(shared);
             logger.info("AstmDispatcher REUSING the channel's shared ASTM connection "
                 + "(bidirectional query/answer on the same socket), channel=" + getChannelId());
@@ -82,6 +92,15 @@ public class AstmDispatcher extends DestinationConnector {
         usingSharedDriver = false;
         try {
             properties = (AstmProperties) getConnectorProperties();
+
+            // DEPLOY-ORDER FIX: never bind a standalone TCP_SERVER port here.
+            if (properties.getTransportMode() == AstmProperties.TransportMode.TCP_SERVER) {
+                deferredSharedLookup = true;
+                logger.info("AstmDispatcher deferring shared-driver lookup (TCP_SERVER, "
+                    + "source not started yet), channel=" + getChannelId());
+                return;
+            }
+
             astmService = new AstmService();
             AstmStatusCallback statusCallback = buildStatusCallback(properties);
             astmService.init(properties, statusCallback);
@@ -218,6 +237,24 @@ public class AstmDispatcher extends DestinationConnector {
     @Override
     public Response send(ConnectorProperties connectorProperties, ConnectorMessage message) {
         try {
+            // DEPLOY-ORDER FIX: first send resolves the shared driver registered
+            // by the channel's AstmReceiver (it is always running by the time a
+            // message flows, because the message came from that receiver).
+            if (deferredSharedLookup && astmService == null) {
+                AsyncAstmDriver shared = AstmService.findSharedDriver(getChannelId());
+                long deadline = System.currentTimeMillis() + 15000;
+                while (shared == null && System.currentTimeMillis() < deadline) {
+                    Thread.sleep(200);
+                    shared = AstmService.findSharedDriver(getChannelId());
+                }
+                if (shared != null) {
+                    astmService = AstmService.wrapSharedDriver(shared);
+                    usingSharedDriver = true;
+                    deferredSharedLookup = false;
+                    logger.info("AstmDispatcher RESOLVED the shared ASTM connection on first send, channel="
+                        + getChannelId());
+                }
+            }
             AstmProperties props = (AstmProperties) connectorProperties;
             MessageContent encoded = message.getEncoded();
             String payload = encoded != null ? encoded.getContent() : "";
