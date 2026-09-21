@@ -8,6 +8,9 @@ import com.bitdreamit.astm.asyncastm.service.states.callback.AstmStatusCallback;
 import com.fazecast.jSerialComm.SerialPort;
 import org.apache.log4j.Logger;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
  * AstmService — factory + lifecycle wrapper for AsyncAstmDriver.
  *
@@ -40,6 +43,56 @@ public class AstmService implements ServerPlugin {
 
     // Per-channel driver instance (null at plugin level)
     private AsyncAstmDriver driver;
+
+    // =========================================================================
+    // BIDIRECTIONAL FIX (A4) — shared per-channel connection registry.
+    //
+    // The old design created TWO independent drivers per channel: one inside
+    // AstmReceiver (source) and one inside AstmDispatcher (destination).
+    // Consequences:
+    //   - TCP_SERVER: both tried to LISTEN on the same port -> BindException,
+    //     or if configured on different ports the instrument's query arrived
+    //     on the source socket and the order was sent on a socket the
+    //     instrument never opened. Bidirectional query->answer was impossible.
+    //   - SERIAL: two drivers cannot open the same COM port.
+    //   - TCP_CLIENT: two separate sockets to the analyzer.
+    //
+    // With the registry, AstmReceiver registers its driver under the channel
+    // id and AstmDispatcher REUSES it. Both directions then share ONE state
+    // machine / ONE socket: when the instrument's Host Query (TSREQ / Q record)
+    // arrives, the channel transformer answers through the destination and the
+    // order goes out on the SAME connection (IdleState sends ENQ right after
+    // the instrument's query transfer completes) — exactly the Pentra 400 6.1
+    // -> 6.2, i-800 TSREQ^REAL -> TSDWN^REAL and D-10 query sequences.
+    // =========================================================================
+    private static final Map<String, AsyncAstmDriver> SHARED_DRIVERS = new ConcurrentHashMap<>();
+
+    public static void registerSharedDriver(String channelId, AsyncAstmDriver driver) {
+        if (channelId != null && driver != null) {
+            SHARED_DRIVERS.put(channelId, driver);
+            logger.info("ASTM shared driver registered for channel " + channelId);
+        }
+    }
+
+    public static AsyncAstmDriver findSharedDriver(String channelId) {
+        return (channelId == null) ? null : SHARED_DRIVERS.get(channelId);
+    }
+
+    public static void unregisterSharedDriver(String channelId) {
+        if (channelId != null && SHARED_DRIVERS.remove(channelId) != null) {
+            logger.info("ASTM shared driver unregistered for channel " + channelId);
+        }
+    }
+
+    /**
+     * BIDIRECTIONAL FIX (A4): create a lightweight AstmService wrapper around
+     * an already-running shared driver (used by AstmDispatcher in shared mode).
+     */
+    public static AstmService wrapSharedDriver(AsyncAstmDriver sharedDriver) {
+        AstmService service = new AstmService();
+        service.driver = sharedDriver;
+        return service;
+    }
 
     // FIX (Bug #7): Restore the static whitelist initializer. Without this,
     // Mirth 4.x's XStream security policy rejects AstmReceiverProperties and
@@ -115,6 +168,8 @@ public class AstmService implements ServerPlugin {
 
                 serialDriver.setProtocol(props.getAstmProtocol());
                 serialDriver.setCharset(props.getCharsetName());
+                // BIDIRECTIONAL FIX (A1/A2): propagate framing configuration
+                serialDriver.setFrameConfig(props.getMaxFrameSize(), props.isUseChecksum());
                 if (callback != null) {
                     serialDriver.setStatusCallback(callback);
                 }
@@ -124,6 +179,8 @@ public class AstmService implements ServerPlugin {
                 AsyncAstmTcpDriver serverDriver = new AsyncAstmTcpDriver(
                     props.getPort(), true, props.getAstmProtocol());
                 serverDriver.setCharset(props.getCharsetName());
+                // BIDIRECTIONAL FIX (A1/A2): propagate framing configuration
+                serverDriver.setFrameConfig(props.getMaxFrameSize(), props.isUseChecksum());
                 if (callback != null) {
                     serverDriver.setStatusCallback(callback);
                 }
@@ -134,6 +191,8 @@ public class AstmService implements ServerPlugin {
                 AsyncAstmTcpDriver clientDriver = new AsyncAstmTcpDriver(
                     props.getHost(), props.getPort(), false, props.getAstmProtocol());
                 clientDriver.setCharset(props.getCharsetName());
+                // BIDIRECTIONAL FIX (A1/A2): propagate framing configuration
+                clientDriver.setFrameConfig(props.getMaxFrameSize(), props.isUseChecksum());
                 if (callback != null) {
                     clientDriver.setStatusCallback(callback);
                 }

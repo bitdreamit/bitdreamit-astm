@@ -40,6 +40,11 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
     private AstmContext context;
     private AstmStateMachine stateMachine;
 
+    // BIDIRECTIONAL FIX (A1/A2): framing configuration propagated from
+    // AstmProperties (useChecksum / maxFrameSize) into the AstmContext.
+    private int maxFrameSize = 240;
+    private boolean checksumEnabled = true;
+
     // Old constructor (for AstmConnectionManager compatibility)
     public AsyncAstmTcpDriver(String name, AstmStatusCallback callback) {
         this.name = name;
@@ -65,17 +70,27 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
      * FIX: Tolerant protocol parsing. If the protocol string is null/blank or
      * not a valid Protocol enum value, fall back to ELECSYS rather than throwing
      * IllegalArgumentException and killing the driver instantiation.
+     *
+     * BIDIRECTIONAL FIX (A1): delegates to Protocol.parse() which also accepts
+     * analyzer-family aliases (E1394, D10, PENTRA, ERBA, ...) mapping them to
+     * the correct framing mode.
      */
     private static Protocol parseProtocol(String protocolStr) {
-        if (protocolStr == null || protocolStr.trim().isEmpty()) {
-            logger.warn("Empty ASTM protocol string, defaulting to ELECSYS");
-            return Protocol.ELECSYS;
-        }
-        try {
-            return Protocol.valueOf(protocolStr.trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            logger.warn("Unknown ASTM protocol '" + protocolStr + "', defaulting to ELECSYS");
-            return Protocol.ELECSYS;
+        return Protocol.parse(protocolStr);
+    }
+
+    /**
+     * BIDIRECTIONAL FIX (A1/A2): configure outbound framing and receive-side
+     * checksum validation. Called by AstmService.createDriver() with the
+     * channel's Max Frame Size and Use Checksum settings; applied to the
+     * AstmContext as soon as (or after) the connection is created.
+     */
+    public void setFrameConfig(int maxFrameSize, boolean checksumEnabled) {
+        this.maxFrameSize = (maxFrameSize > 0) ? maxFrameSize : 240;
+        this.checksumEnabled = checksumEnabled;
+        if (this.context != null) {
+            this.context.setMaxFrameContentLength(this.maxFrameSize);
+            this.context.setChecksumEnabled(this.checksumEnabled);
         }
     }
 
@@ -110,6 +125,8 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
             String bind = (bindAddress != null) ? bindAddress : "0.0.0.0";
             AbstractAstmConnection conn = new AstmTcpServerConnection(port, bind, protocol, charset);
             this.context = new AstmContext(conn);
+            this.context.setMaxFrameContentLength(this.maxFrameSize);
+            this.context.setChecksumEnabled(this.checksumEnabled);
             this.stateMachine = new AstmStateMachine(context);
             if (callback != null) {
                 stateMachine.addCallback(callback);
@@ -131,6 +148,8 @@ public class AsyncAstmTcpDriver implements AsyncAstmDriver {
             AbstractAstmConnection conn = new AstmTcpClientConnection(
                 new InetSocketAddress(host, port), protocol, charset);
             this.context = new AstmContext(conn);
+            this.context.setMaxFrameContentLength(this.maxFrameSize);
+            this.context.setChecksumEnabled(this.checksumEnabled);
             this.stateMachine = new AstmStateMachine(context);
             if (callback != null) {
                 stateMachine.addCallback(callback);

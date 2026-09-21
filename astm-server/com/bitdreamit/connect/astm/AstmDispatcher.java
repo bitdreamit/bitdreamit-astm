@@ -11,6 +11,7 @@ import com.mirth.connect.donkey.server.channel.DestinationConnector;
 import com.mirth.connect.server.controllers.ControllerFactory;
 import com.mirth.connect.server.controllers.EventController;
 import com.mirth.connect.donkey.server.event.ConnectionStatusEvent;
+import com.bitdreamit.astm.asyncastm.AsyncAstmDriver;
 import com.bitdreamit.astm.asyncastm.service.states.callback.AstmConnectionStatus;
 import com.bitdreamit.astm.asyncastm.service.states.callback.AstmStatusCallback;
 import org.apache.log4j.Logger;
@@ -35,6 +36,12 @@ public class AstmDispatcher extends DestinationConnector {
     private AstmService astmService;
     private AstmProperties properties;
 
+    // BIDIRECTIONAL FIX (A4): when the channel's AstmReceiver source has
+    // registered a driver, the destination REUSES it instead of creating a
+    // second connection. One socket, one state machine, query answered on the
+    // instrument's own connection.
+    private volatile boolean usingSharedDriver = false;
+
     @Override
     public void onDeploy() {
         logger.info("AstmDispatcher deployed for channel " + getChannelId());
@@ -47,6 +54,32 @@ public class AstmDispatcher extends DestinationConnector {
 
     @Override
     public void onStart() {
+        // BIDIRECTIONAL FIX (A4): reuse the driver that the channel's
+        // AstmReceiver source registered (shared connection) whenever it
+        // exists, so both directions run over ONE socket and a Host Query is
+        // answered on the instrument's own connection. Mirth starts the
+        // source before destinations, but poll briefly to be safe.
+        AsyncAstmDriver shared = AstmService.findSharedDriver(getChannelId());
+        if (shared == null) {
+            long deadline = System.currentTimeMillis() + 15000;
+            while (shared == null && System.currentTimeMillis() < deadline) {
+                try { Thread.sleep(200); } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                shared = AstmService.findSharedDriver(getChannelId());
+            }
+        }
+        if (shared != null) {
+            usingSharedDriver = true;
+            astmService = AstmService.wrapSharedDriver(shared);
+            logger.info("AstmDispatcher REUSING the channel's shared ASTM connection "
+                + "(bidirectional query/answer on the same socket), channel=" + getChannelId());
+            return; // do NOT start a second driver
+        }
+
+        // No shared driver (e.g. dispatcher-only channel): historical standalone path.
+        usingSharedDriver = false;
         try {
             properties = (AstmProperties) getConnectorProperties();
             astmService = new AstmService();
@@ -154,6 +187,11 @@ public class AstmDispatcher extends DestinationConnector {
 
     @Override
     public void onStop() {
+        // BIDIRECTIONAL FIX (A4): never stop a driver owned by the source.
+        if (usingSharedDriver) {
+            logger.info("AstmDispatcher onStop skipped (shared driver owned by AstmReceiver)");
+            return;
+        }
         try {
             if (astmService != null) {
                 astmService.stopDriver();
@@ -165,6 +203,9 @@ public class AstmDispatcher extends DestinationConnector {
 
     @Override
     public void onHalt() {
+        if (usingSharedDriver) {
+            return; // shared driver is owned/stopped by AstmReceiver.onHalt()
+        }
         try {
             if (astmService != null) {
                 astmService.stopDriver();

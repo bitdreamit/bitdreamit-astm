@@ -32,14 +32,42 @@ import java.util.List;
  * This handles BOTH formats:
  *   - D-10: "1H|\^&...\r\x03" → strip "1" → find \x03 → keep "H|\^&..."
  *   - i800: "1H|\^&...\rP|1...\rO|1...\xETB" → strip "1" → find \xETB → keep "H|\^&...\rP|1...\rO|1..."
+ *
+ * BIDIRECTIONAL FIX (A2) — receive-side integrity enforcement:
+ * The old appendFrame() never validated anything and never threw, so the
+ * NAK branch in TransferReceiverState was dead code and malformed frames
+ * were ACKed and stored. appendFrame() now validates, per ASTM E1381:
+ *
+ *   - CHECKSUM: the two characters after ETX/ETB must equal
+ *     (sum of ASCII values from FN through ETX/ETB inclusive) mod 256,
+ *     rendered as two hex digits (case-insensitive compare). All four
+ *     audited manuals (D-10, Pentra 400, i-800, Erba XL) use this
+ *     Add-Mod-256 algorithm.
+ *   - FRAME NUMBER SEQUENCE: 1,2,...,7,0,1,... across the transfer phase,
+ *     starting at 1 (the FrameBuffer is recreated per transfer by
+ *     TransferReceiverState.init(), which naturally resets the cycle).
+ *
+ * A violation throws IllegalArgumentException, which TransferReceiverState
+ * already catches to send NAK and let the analyzer resend — exactly the
+ * E1381 receiver behavior. Validation can be disabled (checksumEnabled=false)
+ * for analyzers configured without checksums; frame-number order is still
+ * checked whenever a digit is present because it costs nothing and every
+ * audited analyzer numbers its frames.
  */
 public class FrameBuffer {
     private Protocol protocol;
     private List<String> frames;
     private boolean complete;
+    private final boolean checksumEnabled;
+    private int expectedFrameNumber = 1; // ASTM: receiver numbers frames 1,2,...,7,0,1,...
 
     public FrameBuffer(Protocol protocol) {
+        this(protocol, true);
+    }
+
+    public FrameBuffer(Protocol protocol, boolean checksumEnabled) {
         this.protocol = protocol;
+        this.checksumEnabled = checksumEnabled;
         this.frames = new ArrayList<>();
         this.complete = false;
     }
@@ -50,7 +78,9 @@ public class FrameBuffer {
         }
 
         // Step 1: Strip frame number (first char — a digit 0-7)
+        String frameNumberStr = null;
         if (frame.length() > 1 && Character.isDigit(frame.charAt(0))) {
+            frameNumberStr = frame.substring(0, 1);
             frame = frame.substring(1);
         }
 
@@ -64,6 +94,11 @@ public class FrameBuffer {
                 break;
             }
         }
+
+        // BIDIRECTIONAL FIX (A2): validate frame number sequence + checksum
+        // BEFORE accepting the frame. Throws IllegalArgumentException on any
+        // violation, which TransferReceiverState maps to NAK + resend.
+        validateFrame(frameNumberStr, endIndex, frame);
 
         // Step 3: Take everything before <ETB>/<ETX>
         // This is the record data — may contain multiple <CR>-separated records
@@ -83,6 +118,61 @@ public class FrameBuffer {
         // multiple records (i800/COBAS style).
         if (!frame.isEmpty()) {
             this.frames.add(frame);
+        }
+
+        // advance the receiver cycle 1,2,...,7,0,1,...
+        if (frameNumberStr != null) {
+            expectedFrameNumber = (expectedFrameNumber + 1) % 8;
+        }
+    }
+
+    /**
+     * BIDIRECTIONAL FIX (A2): frame-number + checksum validation.
+     *
+     * @param frameNumberStr the FN digit stripped from the frame (or null)
+     * @param endIndex       index of ETX/ETB inside the FN-stripped frame
+     *                       (-1 when absent)
+     * @param fnStripped     the frame WITHOUT the leading FN digit
+     */
+    private void validateFrame(String frameNumberStr, int endIndex, String fnStripped) {
+        // --- frame number sequence ---
+        if (frameNumberStr != null) {
+            int received = frameNumberStr.charAt(0) - '0';
+            if (received < 0 || received > 7) {
+                throw new IllegalArgumentException(
+                    "Invalid ASTM frame number: " + received + " (must be 0-7)");
+            }
+            if (received != expectedFrameNumber) {
+                throw new IllegalArgumentException(
+                    "ASTM frame number mismatch: expected " + expectedFrameNumber
+                    + ", received " + received);
+            }
+        }
+
+        // --- checksum (Add-Mod-256 over FN..ETX/ETB) ---
+        if (!checksumEnabled || endIndex < 0 || frameNumberStr == null) {
+            return; // checksum disabled or frame malformed without FN: skip
+        }
+        if (endIndex + 3 > fnStripped.length()) {
+            // fewer than 2 chars after ETX/ETB — no checksum present
+            return;
+        }
+        String receivedChecksum = fnStripped.substring(endIndex + 1, endIndex + 3);
+        if (receivedChecksum.isEmpty()) {
+            return;
+        }
+        char endChar = fnStripped.charAt(endIndex);
+        int sum = frameNumberStr.charAt(0);
+        for (int i = 0; i < endIndex; i++) {
+            sum += fnStripped.charAt(i) & 0xFF;
+        }
+        sum += endChar & 0xFF;
+        sum &= 0xFF;
+        String calculated = String.format("%02X", sum);
+        if (!calculated.equalsIgnoreCase(receivedChecksum)) {
+            throw new IllegalArgumentException(
+                "ASTM checksum mismatch: calculated " + calculated
+                + ", received " + receivedChecksum);
         }
     }
 

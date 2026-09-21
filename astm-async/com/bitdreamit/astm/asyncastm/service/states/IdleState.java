@@ -130,15 +130,21 @@ public class IdleState extends AstmState {
 
             if (getNextState() instanceof IdleState) {
                 if (this.receivedEnq) {
-                    if (context.hasOutgoingMessage()) {
-                        context.getConnection().writeByte(21); // NAK
-                        this.receivedEnq = false;
-                        logger.warn("Rejected incoming ASTM send request because still waiting for previous message");
-                    } else {
-                        logger.debug("Trying to receive message");
-                        context.getConnection().writeByte(6); // ACK
-                        transitionTo(TransferReceiverState.class);
-                    }
+                    // BIDIRECTIONAL FIX (A3): the old code NAKed the instrument's
+                    // ENQ whenever an outgoing message was pending
+                    // ("Rejected incoming ASTM send request..."). Per ASTM E1381
+                    // the first sender owns the line: the analyzer grabbed it
+                    // first, so we must ACK and receive its transfer. The pending
+                    // outgoing message (messageIterator) is left untouched - when
+                    // the receiver returns to Idle, the outgoing waiter reuses the
+                    // EXISTING iterator ("Using existing outgoing message") and the
+                    // host sends its answer turn (order download) immediately after
+                    // the analyzer's query. This is exactly the Pentra 400 6.1->6.2,
+                    // i-800 TSREQ->TSDWN and D-10 query->answer sequences.
+                    logger.debug("Incoming ASTM send request accepted (yielding the line to the peer; "
+                        + "pending outgoing message, if any, is sent afterwards)");
+                    context.getConnection().writeByte(6); // ACK
+                    transitionTo(TransferReceiverState.class);
                 } else if (this.timeoutTimer.isExpired() && context.getMessageIterator() != null) {
                     logger.debug("Trying to send message");
                     context.getConnection().setSocketTimeout(15);

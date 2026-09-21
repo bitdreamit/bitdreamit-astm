@@ -25,7 +25,12 @@ public class TransferReceiverState extends AstmState {
     @Override
     protected final void init() throws IOException {
         super.init();
-        this.frameBuffer = new FrameBuffer(context.getConnection().getProtocol());
+        // BIDIRECTIONAL FIX (A2): propagate the checksum configuration into the
+        // FrameBuffer so the new receive-side validation honors the channel's
+        // "Use Checksum" setting. The FrameBuffer constructor also resets the
+        // frame-number cycle to 1, as ASTM requires per transfer phase.
+        this.frameBuffer = new FrameBuffer(context.getConnection().getProtocol(),
+                                           context.isChecksumEnabled());
         this.badFrameReceived = false;
     }
 

@@ -56,6 +56,12 @@ public class AstmReceiver extends SourceConnector {
             logger.info("AstmReceiver started: mode=" + properties.getTransportMode()
                 + ", channel=" + getChannelId());
 
+            // BIDIRECTIONAL FIX (A4): publish this channel's driver so the
+            // AstmDispatcher destination reuses the SAME connection. Both
+            // directions then share one state machine / one socket and a Host
+            // Query can be answered on the instrument's own connection.
+            AstmService.registerSharedDriver(getChannelId(), astmService.getDriver());
+
             AstmReceiverService receiverService = new AstmReceiverService(
                 this, astmService.getDriver(), stopped);
             Thread receiverThread = new Thread(receiverService);
@@ -150,6 +156,9 @@ public class AstmReceiver extends SourceConnector {
     @Override
     public void onStop() {
         stopped.set(true);
+        // BIDIRECTIONAL FIX (A4): remove the shared-driver registration first
+        // so a redeploying destination cannot pick up a dying driver.
+        AstmService.unregisterSharedDriver(getChannelId());
         try {
             if (astmService != null) {
                 astmService.stopDriver();
@@ -162,6 +171,7 @@ public class AstmReceiver extends SourceConnector {
     @Override
     public void onHalt() {
         stopped.set(true);
+        AstmService.unregisterSharedDriver(getChannelId());
         try {
             if (astmService != null) {
                 astmService.stopDriver();

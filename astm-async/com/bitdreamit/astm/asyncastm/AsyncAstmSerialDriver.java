@@ -39,6 +39,11 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
     private AstmStateMachine stateMachine;
     private volatile boolean running = false;
 
+    // BIDIRECTIONAL FIX (A1/A2): framing configuration propagated from
+    // AstmProperties (useChecksum / maxFrameSize) into the AstmContext.
+    private int maxFrameSize = 240;
+    private boolean checksumEnabled = true;
+
     public void setPortName(String v) { this.portName = v; }
     public void setBaudRate(int v) { this.baudRate = v; }
     public void setDataBits(int v) { this.dataBits = v; }
@@ -47,6 +52,19 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
     public void setFlowControl(int v) { this.flowControl = v; }
     public void setProtocol(String v) { this.protocol = v; }
     public void setCharset(String v) { this.charset = v; }
+
+    /**
+     * BIDIRECTIONAL FIX (A1/A2): configure outbound framing and receive-side
+     * checksum validation (mirrors AsyncAstmTcpDriver.setFrameConfig).
+     */
+    public void setFrameConfig(int maxFrameSize, boolean checksumEnabled) {
+        this.maxFrameSize = (maxFrameSize > 0) ? maxFrameSize : 240;
+        this.checksumEnabled = checksumEnabled;
+        if (this.context != null) {
+            this.context.setMaxFrameContentLength(this.maxFrameSize);
+            this.context.setChecksumEnabled(this.checksumEnabled);
+        }
+    }
 
     /**
      * FIX (Bug #4): Allow AstmReceiver / AstmDispatcher to register a status
@@ -61,20 +79,16 @@ public class AsyncAstmSerialDriver implements AsyncAstmDriver {
 
     @Override
     public void start() throws Exception {
-        String protoUpper = protocol.trim().toUpperCase();
-        Protocol p;
-        try {
-            p = Protocol.valueOf(protoUpper);
-        } catch (IllegalArgumentException e) {
-            logger.warn("Unknown protocol '" + protocol + "', defaulting to ELECSYS");
-            p = Protocol.ELECSYS;
-        }
+        // BIDIRECTIONAL FIX (A1): tolerant alias-aware protocol parsing
+        Protocol p = Protocol.parse(protocol);
 
         validateSerialParams();
 
         AbstractAstmConnection conn = new AstmSerialConnection(
                 portName, baudRate, dataBits, stopBits, parity, flowControl, p, charset);
         this.context = new AstmContext(conn);
+        this.context.setMaxFrameContentLength(this.maxFrameSize);
+        this.context.setChecksumEnabled(this.checksumEnabled);
         this.stateMachine = new AstmStateMachine(context);
         if (callback != null) {
             stateMachine.addCallback(callback);

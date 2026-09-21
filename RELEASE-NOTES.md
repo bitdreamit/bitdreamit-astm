@@ -1,3 +1,91 @@
+# Release Note — bitdreamit-astm v3.1.0 (Bidirectional Update)
+
+**Release date:** 21 September 2026
+**Plugin name:** ASTM Settings (`bitdreamit-astm`)
+**Author:** Bit Dream IT (https://www.bitdreamit.com)
+**Mirth Connect compatibility:** 3.8.0 → 4.7.2 + 26.3.0 / 26.3.1 / 26.6.0
+**License:** Proprietary (license3j package removed in v3.0.0 — no license key required)
+**Source:** https://github.com/bitdreamit/bitdreamit-astm
+
+---
+
+## 0. What's new in v3.1.0 — 100% bidirectional (Host Query / Order Download)
+
+This release was verified against four analyzer host-connection manuals end to
+end: **Bio-Rad D-10** (L20017702, LIS1-A/LIS2-A), **Horiba/ABX Pentra 400**
+(RAA023JEN), **Maccura i-800** (LIS Protocol V1.0.00.221210) and **Erba
+Lachema XL** (ASTM Host Interface Document v2.0). Five defects prevented
+bidirectional (query → order download) from ever working; all are fixed.
+
+### FIX A1 (CRITICAL) — host-sent frames were protocol-invalid
+`AbstractAstmConnection.sendFrame()` emitted `<STX>text<CR><LF>` — **no frame
+number, no ETX/ETB, no checksum** — so every analyzer NAKed or silently
+dropped every frame of the order download. The new
+`E1394MessageIterator` (astm-async) now builds wire-exact frames:
+
+    <STX> FN <content> CR <ETX|ETB> C1 C2 <CR><LF>
+
+with FN cycling 1..7,0 and the Add-Mod-256 checksum over FN..ETX/ETB —
+byte-for-byte the D-10 §4.7, Pentra 400 §6.2, i-800 §3.6.2 and Erba XL
+examples. All protocols (ELECSYS, COBAS, new ASTM_E1394, new
+ASTM_E1394_PACKED) route through it. Over-long records are chunked with ETB.
+
+Framing per protocol:
+| Protocol | Send framing | Matches |
+|---|---|---|
+| ELECSYS | one record per frame | D-10 / Pentra 400 host examples |
+| COBAS | records packed into frames | i-800 TSDWN^REAL example |
+| ASTM_E1394 | one record per frame | explicit generic ASTM |
+| ASTM_E1394_PACKED | packed multi-record frames | Erba XL (1024-char frames) |
+
+`Protocol.parse()` also accepts aliases: `E1394`, `D10`, `PENTRA`, `I800`,
+`ERBA`, `ERBAXL`, `XL`, ... mapping to the correct framing mode.
+
+### FIX A2 — receive-side integrity now enforced (NAK works)
+`FrameBuffer.appendFrame()` never validated anything, so the NAK branch in
+`TransferReceiverState` was dead code and corrupt frames were ACKed. The
+FrameBuffer now validates the **frame-number sequence (1..7,0)** and the
+**Add-Mod-256 checksum** of every received frame and throws
+IllegalArgumentException on violation → NAK → analyzer resends, exactly per
+E1381. Validation honors the channel's *Use Checksum* setting (now actually
+propagated from `AstmProperties.useChecksum` / `maxFrameSize` into the
+driver/context).
+
+### FIX A3 — no more NAK on the instrument's query (line yield)
+`IdleState` used to NAK the instrument's ENQ whenever an outgoing message was
+pending. Per E1381 the first sender owns the line: IdleState now ACKs and
+receives the instrument's query transfer; the pending outgoing message is sent
+immediately afterwards (the existing "reuse current message iterator" path),
+which is precisely the Pentra 6.1→6.2 / i-800 TSREQ→TSDWN sequence.
+
+### FIX A4 (ARCHITECTURAL) — one shared connection per channel
+`AstmReceiver` (source) and `AstmDispatcher` (destination) each created their
+**own** driver — in TCP Server mode both tried to listen on the same port
+(BindException), and a Host Query could never be answered on the instrument's
+socket. There is now a per-channel shared-driver registry
+(`AstmService.registerSharedDriver / findSharedDriver / unregisterSharedDriver`):
+the destination **reuses** the source's driver, so results-in and orders-out
+flow over ONE socket / ONE state machine. Standalone dispatcher-only channels
+keep the historical behavior.
+
+### FIX A5 — channel framing settings now take effect
+`AstmProperties.useChecksum` and `maxFrameSize` existed but were never passed
+to the driver. `AstmService.createDriver()` now calls
+`driver.setFrameConfig(maxFrameSize, useChecksum)`; the state machine uses
+them for outbound framing and receive-side validation. Set **Max Frame Size
+1024** for Erba XL channels.
+
+### Upgrade notes
+- No channel XML changes required. Existing ELECSYS/COBAS channels keep their
+  settings; their SEND direction silently upgrades from invalid frames to
+  standards-correct frames (their RECEIVE path is unchanged).
+- Recommended protocol values for the audited analyzers:
+  D-10 → `ELECSYS` or `ASTM_E1394`; Pentra 400 → `ELECSYS` or `ASTM_E1394`;
+  i-800 → `COBAS` or `ASTM_E1394_PACKED`; Erba XL → `ERBAXL`/`ASTM_E1394_PACKED`
+  with Max Frame Size `1024`.
+
+---
+
 # Release Note — bitdreamit-astm v3.0.3
 
 **Release date:** 13 August 2026
