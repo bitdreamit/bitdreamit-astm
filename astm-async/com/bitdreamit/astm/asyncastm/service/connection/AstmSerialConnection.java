@@ -245,7 +245,16 @@ public class AstmSerialConnection extends AbstractAstmConnection {
     public void close() throws IOException {
         explicitlyClosed = true;
         SerialPort sp = this.serialPort;
-        super.close();
+        // BIDIRECTIONAL FIX (Bug #23): close the PORT FIRST, then join the
+        // reader. The old order was super.close() (untimed readerThread.join())
+        // BEFORE closePort() — but jSerialComm readBytes() is a NATIVE blocking
+        // call that Thread.interrupt() cannot unbreak. The reader stayed in
+        // readBytes until its 5s timeout, saw isConnectionAlive()==true (port
+        // still open!) and looped forever, so join() never returned: the state
+        // thread hung in Disconnect while holding the connection monitor and
+        // Mirth's undeploy queue wedged ("Thread still alive, retrying to
+        // close" forever). Closing the port first makes readBytes return -1,
+        // isConnectionAlive() false, and the reader exits cleanly.
         if (sp != null) {
             try {
                 if (sp.isOpen()) {
@@ -257,5 +266,6 @@ public class AstmSerialConnection extends AbstractAstmConnection {
             }
             serialPort = null;
         }
+        super.close();
     }
 }

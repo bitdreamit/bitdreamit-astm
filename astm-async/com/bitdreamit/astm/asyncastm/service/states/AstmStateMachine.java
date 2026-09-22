@@ -112,7 +112,13 @@ public class AstmStateMachine implements Closeable {
                 logger.error("Thread still alive, retrying to close");
                 this.context.getConnection().close();
                 int retries = 0;
-                while (this.stateThread.isAlive()) {
+                // BIDIRECTIONAL FIX (Bug #23): bound the retry loop. The old
+                // while(isAlive()) NEVER gave up, so one stuck state thread
+                // (native serial read) wedged Mirth's undeploy/deploy queue
+                // for every channel. Give the thread 10 more seconds, then
+                // log and move on — the thread is a daemon and dies when the
+                // connection object is collected / port is closed.
+                while (this.stateThread.isAlive() && retries < 10) {
                     logger.debug("Stopping ASTM connection");
                     this.stateThread.interrupt();
                     this.stateThread.join(1000L);
@@ -121,6 +127,10 @@ public class AstmStateMachine implements Closeable {
                         logger.debug("Thread not stopped after " + retries + " retries");
                         this.context.getConnection().close();
                     }
+                }
+                if (this.stateThread.isAlive()) {
+                    logger.error("ASTM state thread did not stop within the grace period — "
+                        + "giving up so the channel lifecycle can proceed (daemon thread)");
                 }
             }
         } catch (InterruptedException e) {

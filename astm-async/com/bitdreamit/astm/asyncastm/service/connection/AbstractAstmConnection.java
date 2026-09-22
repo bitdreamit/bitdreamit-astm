@@ -57,7 +57,20 @@ public abstract class AbstractAstmConnection implements Closeable {
     public synchronized void close() throws IOException {
         if (this.readerThread != null && this.readerThread.isAlive()) {
             this.readerThread.interrupt();
-            try { this.readerThread.join(); } catch (InterruptedException e) { throw new IOException(e); }
+            // BIDIRECTIONAL FIX (Bug #23): bound the join. The old untimed join()
+            // could hang forever when a subclass reader was parked in a native
+            // blocking read (jSerialComm readBytes), deadlocking Mirth's undeploy
+            // queue. 2s is enough once the underlying port/socket is closed; the
+            // reader thread is a daemon, so a straggler cannot block shutdown.
+            try {
+                this.readerThread.join(2000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            if (this.readerThread.isAlive()) {
+                logger.warn("ASTM reader thread did not stop within 2s — continuing shutdown "
+                    + "(daemon thread; it exits on the next read/timeout cycle)");
+            }
         }
     }
 
@@ -182,6 +195,15 @@ public abstract class AbstractAstmConnection implements Closeable {
                         while (!success) {
                             try {
                                 int b = AbstractAstmConnection.this.doGetInputStream().read();
+                                // BIDIRECTIONAL FIX (Bug #23): honor interrupt even when the
+                                // underlying read is a native blocking call that swallowed it
+                                if (Thread.currentThread().isInterrupted()) {
+                                    logger.trace("Reader thread interrupted — closing read-byte thread");
+                                    AbstractAstmConnection.this.lastByte = -1;
+                                    success = true;
+                                    AbstractAstmConnection.this.readySemaphore.release();
+                                    return;
+                                }
                                 if (b == -1) {
                                     // FIX (Bug #19): read() returned -1.
                                     // With TIMEOUT_READ_BLOCKING and timeout=0, this means the
